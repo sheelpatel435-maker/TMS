@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TMS Dashboard</title>
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body class="dashboard-body">
+
+    <nav class="navbar">
+
+        <div class="logo">
+            TMS
+        </div>
+
+        <div class="nav-right">
+
+            <a href="/dashboard.html" class="nav-link active">
+                Dashboard
+            </a>
+
+            <a href="/company.html" class="nav-link">
+                Companies
+            </a>
+
+            <a href="/profile.html" class="nav-link">
+                Profile
+            </a>
+
+            <button onclick="logout()" class="logout-btn">
+                Logout
+            </button>
+
+        </div>
+
+    </nav>
+
+
+    <div class="dashboard-container">
+
+        <div class="dashboard-header">
+
+            <div>
+
+                <h1>
+                    Dashboard
+                </h1>
+
+                <p id="welcomeMessage">
+                    Welcome
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="user-info">
+
+            <div>
+
+                <strong>
+                    Name
+                </strong>
+
+                <span id="userName">
+                    -
+                </span>
+
+            </div>
+
+            <div>
+
+                <strong>
+                    Email
+                </strong>
+
+                <span id="userEmail">
+                    -
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="stats-grid">
+
+
+            <a href="/vehicles.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Vehicles
+                </div>
+
+                <div class="stat-number" id="vehicleCount">
+                    0
+                </div>
+
+            </a>
+
+
+            <a href="/drivers.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Drivers
+                </div>
+
+                <div class="stat-number" id="driverCount">
+                    0
+                </div>
+
+            </a>
+
+
+            <a href="/helpers.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Helpers
+                </div>
+
+                <div class="stat-number" id="helperCount">
+                    0
+                </div>
+
+            </a>
+
+
+            <a href="/clients.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Clients
+                </div>
+
+                <div class="stat-number" id="clientCount">
+                    0
+                </div>
+
+            </a>
+
+
+            <a href="/bilties.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Bilties
+                </div>
+
+                <div class="stat-number" id="biltyCount">
+                    0
+                </div>
+
+            </a>
+
+
+            <a href="/trips.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Trips
+                </div>
+
+                <div class="stat-number" id="tripCount">
+                    0
+                </div>
+
+            </a>
+
+
+            <a href="/invoices.html" class="stat-card stat-link">
+
+                <div class="stat-title">
+                    Invoices
+                </div>
+
+                <div class="stat-number" id="invoiceCount">
+                    0
+                </div>
+
+            </a>
+
+
+        </div>
+
+
+        <div id="dashboardMessage" class="dashboard-message"></div>
+
+    </div>
+
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>

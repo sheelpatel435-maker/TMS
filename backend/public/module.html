@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TMS Module</title>
+
+    <meta
+        name="description"
+        content="Transport Management System module for managing vehicles, drivers, clients, trips, invoices and other transport operations."
+    >
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dashboard-body">
+
+    <nav class="navbar">
+
+        <div class="logo">
+            TMS
+        </div>
+
+        <div class="nav-right">
+
+            <a
+                href="/dashboard.html"
+                class="nav-link"
+            >
+                Dashboard
+            </a>
+
+            <a
+                href="/company.html"
+                class="nav-link"
+            >
+                Companies
+            </a>
+
+            <a
+                href="/profile.html"
+                class="nav-link"
+            >
+                Profile
+            </a>
+
+            <button
+                onclick="logout()"
+                class="logout-btn"
+            >
+                Logout
+            </button>
+
+        </div>
+
+    </nav>
+
+    <div class="module-container">
+
+        <div class="module-header">
+
+            <div>
+
+                <h1 id="moduleTitle">
+                    Module
+                </h1>
+
+                <p id="moduleSubtitle">
+                    Manage records
+                </p>
+
+            </div>
+
+            <a
+                href="/dashboard.html"
+                class="back-btn"
+            >
+                Back to Dashboard
+            </a>
+
+        </div>
+
+        <div
+            id="moduleMessage"
+            class="module-message"
+        ></div>
+
+        <div class="module-card">
+
+            <div class="module-card-header">
+
+                <h2 id="recordTitle">
+                    Records
+                </h2>
+
+                <span id="recordCount">
+                    0 Records
+                </span>
+
+            </div>
+
+            <div class="table-wrapper">
+
+                <table class="module-table">
+
+                    <thead id="moduleTableHead"></thead>
+
+                    <tbody id="moduleTableBody"></tbody>
+
+                </table>
+
+            </div>
+
+            <div
+                id="emptyRecords"
+                class="empty-records"
+            >
+                No records found
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="module.js"></script>
+
+</body>
+</html>

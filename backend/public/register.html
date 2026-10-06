@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>TMS Register</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="auth-body">
+
+    <div class="container">
+
+        <div class="box">
+
+            <h1>
+                TMS
+            </h1>
+
+            <p class="subtitle">
+                Transport Management System
+            </p>
+
+            <h2>
+                Register
+            </h2>
+
+            <form id="registerForm">
+
+                <label for="name">
+                    Name
+                </label>
+
+                <input
+                    type="text"
+                    id="name"
+                    placeholder="Enter your name"
+                    required
+                >
+
+
+                <label for="phone">
+                    Mobile Number
+                </label>
+
+                <input
+                    type="text"
+                    id="phone"
+                    placeholder="Enter mobile number"
+                    required
+                >
+
+
+                <label for="email">
+                    Email
+                </label>
+
+                <input
+                    type="email"
+                    id="email"
+                    placeholder="Enter your email"
+                    required
+                >
+
+
+                <label for="company">
+                    Company
+                </label>
+
+                <select
+                    id="company"
+                    required
+                >
+
+                    <option value="">
+                        Loading companies...
+                    </option>
+
+                </select>
+
+
+                <label for="password">
+                    Password
+                </label>
+
+                <input
+                    type="password"
+                    id="password"
+                    placeholder="Enter password"
+                    required
+                >
+
+
+                <label for="confirmPassword">
+                    Confirm Password
+                </label>
+
+                <input
+                    type="password"
+                    id="confirmPassword"
+                    placeholder="Confirm password"
+                    required
+                >
+
+
+                <button type="submit">
+                    Register
+                </button>
+
+            </form>
+
+            <p
+                id="registerMessage"
+                class="form-message"
+            ></p>
+
+            <div class="link">
+
+                Already have an account?
+
+                <a href="/index.html">
+                    Login
+                </a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="register.js"></script>
+
+</body>
+
+</html>
