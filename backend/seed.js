@@ -1,104 +1,88 @@
+const mysql = require("mysql2/promise");
 const bcrypt = require("bcryptjs");
+require("dotenv").config();
 
-const db = require("./db");
+const seed = async () => {
+    const db = await mysql.createConnection({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        port: process.env.DB_PORT
+    });
 
-async function createUser() {
+    const companyName = "TMS Demo Company";
+    const email = "admin@tms.com";
+    const password = "123456";
+    const name = "TMS Admin";
+    const mobile = "9876543210";
 
-    try {
+    const [existingCompany] = await db.execute(
+        `SELECT id FROM companies WHERE name = ? LIMIT 1`,
+        [companyName]
+    );
 
-        // Check company
-        const [companies] = await db.execute(
-            "SELECT id FROM companies LIMIT 1"
+    let companyId;
+
+    if (existingCompany.length > 0) {
+        companyId = existingCompany[0].id;
+    } else {
+        const [companyResult] = await db.execute(
+            `INSERT INTO companies (name, status)
+             VALUES (?, 1)`,
+            [companyName]
         );
 
+        companyId = companyResult.insertId;
+    }
 
-        let companyId;
+    const passwordHash = await bcrypt.hash(password, 10);
 
+    const [existingUser] = await db.execute(
+        `SELECT id FROM users WHERE email = ? LIMIT 1`,
+        [email]
+    );
 
-        // Create company if none exists
-        if (companies.length === 0) {
-
-            const [companyResult] = await db.execute(
-                `INSERT INTO companies (name, status)
-                 VALUES (?, ?)`,
-                ["TMS Demo Company", 1]
-            );
-
-            companyId = companyResult.insertId;
-
-        } else {
-
-            companyId = companies[0].id;
-
-        }
-
-
-        // Password hash
-        const passwordHash = await bcrypt.hash(
-            "123456",
-            10
+    if (existingUser.length > 0) {
+        await db.execute(
+            `UPDATE users
+             SET company_id = ?,
+                 user_type = 'COMPANY_ADMIN',
+                 name = ?,
+                 mobile = ?,
+                 password_hash = ?,
+                 status = 1
+             WHERE email = ?`,
+            [
+                companyId,
+                name,
+                mobile,
+                passwordHash,
+                email
+            ]
         );
-
-
-        // Check existing user
-        const [users] = await db.execute(
-            "SELECT id FROM users WHERE mobile = ? LIMIT 1",
-            ["9876543210"]
-        );
-
-
-        if (users.length > 0) {
-
-            console.log("Test user already exists");
-
-            process.exit();
-
-        }
-
-
-        // Create user
+    } else {
         await db.execute(
             `INSERT INTO users
-            (
-                company_id,
-                user_type,
+            (company_id, user_type, name, mobile, email, password_hash, status)
+            VALUES (?, 'COMPANY_ADMIN', ?, ?, ?, ?, 1)`,
+            [
+                companyId,
                 name,
                 mobile,
                 email,
-                password_hash,
-                status
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [
-                companyId,
-                "COMPANY_ADMIN",
-                "Test Admin",
-                "9876543210",
-                "admin@tms.com",
-                passwordHash,
-                1
+                passwordHash
             ]
         );
-
-
-        console.log("User created successfully");
-
-        console.log("Mobile: 9876543210");
-
-        console.log("Password: 123456");
-
-
-        process.exit();
-
-
-    } catch (error) {
-
-        console.error(error);
-
-        process.exit(1);
-
     }
 
-}
+    console.log("Seed completed");
+    console.log("Email:", email);
+    console.log("Password:", password);
 
-createUser();
+    await db.end();
+};
+
+seed().catch((error) => {
+    console.error(error);
+});
