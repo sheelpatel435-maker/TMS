@@ -1,4 +1,9 @@
 const tripFinalReportModel = require("../models/tripFinalReportModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing } = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
+const { isAllowedStatus } = require("../utils/statusTransitions");
 
 const createReport = async (req, res) => {
     try {
@@ -13,12 +18,11 @@ const createReport = async (req, res) => {
             remarks
         } = req.body;
 
-        if (!trip_id || !report_no) {
-            return res.status(400).json({
-                success: false,
-                message: "trip_id and report_no are required"
-            });
+        if (isMissing(trip_id) || isMissing(report_no)) {
+            throw new HttpError(400, "trip_id and report_no are required");
         }
+
+        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
 
         const reportId = await tripFinalReportModel.createReport({
             company_id: req.user.company_id,
@@ -39,32 +43,24 @@ const createReport = async (req, res) => {
             report_id: reportId
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const getReports = async (req, res) => {
     try {
-        const reports = await tripFinalReportModel.getReports(
-            req.user.company_id
+        const { rows: reports, pagination } = await tripFinalReportModel.getReports(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            reports
+            reports,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
@@ -76,10 +72,7 @@ const getReportById = async (req, res) => {
         );
 
         if (!report) {
-            return res.status(404).json({
-                success: false,
-                message: "Final report not found"
-            });
+            throw new HttpError(404, "Final report not found");
         }
 
         return res.status(200).json({
@@ -87,12 +80,7 @@ const getReportById = async (req, res) => {
             report
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
@@ -100,38 +88,23 @@ const updateStatus = async (req, res) => {
     try {
         const { status } = req.body;
 
-        if (!["VERIFIED", "REJECTED"].includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "Status must be VERIFIED or REJECTED"
-            });
+        if (!isAllowedStatus("finalReport", status) || status === "SUBMITTED") {
+            throw new HttpError(400, "Status must be VERIFIED or REJECTED");
         }
 
-        const updated = await tripFinalReportModel.updateStatus(
+        await tripFinalReportModel.updateStatus(
             req.params.id,
             req.user.company_id,
             status,
             req.user.id
         );
 
-        if (!updated) {
-            return res.status(404).json({
-                success: false,
-                message: "Final report not found"
-            });
-        }
-
         return res.status(200).json({
             success: true,
             message: `Final report ${status.toLowerCase()} successfully`
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

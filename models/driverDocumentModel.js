@@ -1,16 +1,20 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { toTinyIntStatus } = require("../utils/validation");
 
-const getDriverDocuments = async (companyId, driverId) => {
-    const [rows] = await db.execute(
-        `SELECT *
-         FROM driver_documents
-         WHERE company_id = ?
-         AND driver_id = ?
-         ORDER BY id DESC`,
-        [companyId, driverId]
-    );
+const getDriverDocuments = async (companyId, driverId, pagination) => {
+    const where = driverId
+        ? "company_id = ? AND driver_id = ?"
+        : "company_id = ?";
+    const params = driverId ? [companyId, driverId] : [companyId];
 
-    return rows;
+    return paginatedSelect(db, {
+        table: "driver_documents",
+        columns: "*",
+        where,
+        params,
+        pagination
+    });
 };
 
 const createDriverDocument = async (companyId, driverId, data) => {
@@ -27,7 +31,7 @@ const createDriverDocument = async (companyId, driverId, data) => {
             data.document_url || null,
             data.issue_date || null,
             data.expiry_date || null,
-            data.status || "ACTIVE"
+            toTinyIntStatus(data.status, 1)
         ]
     );
 

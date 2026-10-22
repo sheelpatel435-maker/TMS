@@ -1,39 +1,48 @@
 const helperModel = require("../models/helperModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { firstPresent, isMissing } = require("../utils/validation");
 
 const getHelpers = async (req, res) => {
     try {
-        const helpers = await helperModel.getHelpers(
-            req.user.company_id
+        if (!req.user.company_id) {
+            throw new HttpError(400, "User is not assigned to a company");
+        }
+
+        const { rows: helpers, pagination } = await helperModel.getHelpers(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            helpers
+            helpers,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const createHelper = async (req, res) => {
     try {
-        const { full_name } = req.body;
+        const name = firstPresent(req.body.name, req.body.full_name);
+        const { mobile } = req.body;
 
-        if (!full_name) {
-            return res.status(400).json({
-                success: false,
-                message: "Full name is required"
-            });
+        if (isMissing(name)) {
+            throw new HttpError(400, "Helper name is required");
+        }
+
+        if (isMissing(mobile)) {
+            throw new HttpError(400, "Mobile number is required");
         }
 
         const id = await helperModel.createHelper(
             req.user.company_id,
-            req.body
+            {
+                ...req.body,
+                name
+            }
         );
 
         return res.status(201).json({
@@ -42,12 +51,7 @@ const createHelper = async (req, res) => {
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

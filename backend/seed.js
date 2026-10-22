@@ -1,6 +1,7 @@
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcryptjs");
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const seed = async () => {
     const db = await mysql.createConnection({
@@ -74,6 +75,29 @@ const seed = async () => {
                 passwordHash
             ]
         );
+    }
+
+    const demoHelpers = [
+        ["Ramesh Helper", "9000000001"],
+        ["Suresh Helper", "9000000002"]
+    ];
+
+    for (const [helperName, helperMobile] of demoHelpers) {
+        const [existingHelper] = await db.execute(
+            `SELECT id FROM helpers
+             WHERE company_id = ? AND mobile = ?
+             LIMIT 1`,
+            [companyId, helperMobile]
+        );
+
+        if (existingHelper.length === 0) {
+            await db.execute(
+                `INSERT INTO helpers
+                (company_id, name, mobile, status)
+                VALUES (?, ?, ?, 1)`,
+                [companyId, helperName, helperMobile]
+            );
+        }
     }
 
     console.log("Seed completed");

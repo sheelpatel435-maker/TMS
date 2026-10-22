@@ -1,4 +1,13 @@
 const tripExpenseModel = require("../models/tripExpenseModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const {
+    isMissing,
+    requirePositiveAmount,
+    isValidAmount
+} = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
+const { isAllowedStatus } = require("../utils/statusTransitions");
 
 const createExpense = async (req, res) => {
     try {
@@ -6,28 +15,29 @@ const createExpense = async (req, res) => {
             trip_id,
             expense_type,
             requested_amount,
-            approved_amount,
             receipt_url,
             remarks
         } = req.body;
 
-        if (
-            !trip_id ||
-            !expense_type ||
-            requested_amount === undefined
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "trip_id, expense_type and requested_amount are required"
-            });
+        if (isMissing(trip_id) || isMissing(expense_type) || isMissing(requested_amount)) {
+            throw new HttpError(
+                400,
+                "trip_id, expense_type and requested_amount are required"
+            );
         }
+
+        const parsedAmount = requirePositiveAmount(
+            requested_amount,
+            "requested_amount"
+        );
+
+        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
 
         const expenseId = await tripExpenseModel.createExpense({
             company_id: req.user.company_id,
             trip_id,
             expense_type,
-            requested_amount,
-            approved_amount: approved_amount || null,
+            requested_amount: parsedAmount,
             receipt_url: receipt_url || null,
             remarks: remarks || null
         });
@@ -38,32 +48,24 @@ const createExpense = async (req, res) => {
             expense_id: expenseId
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const getExpenses = async (req, res) => {
     try {
-        const expenses = await tripExpenseModel.getExpenses(
-            req.user.company_id
+        const { rows: expenses, pagination } = await tripExpenseModel.getExpenses(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            expenses
+            expenses,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
@@ -75,10 +77,7 @@ const getExpenseById = async (req, res) => {
         );
 
         if (!expense) {
-            return res.status(404).json({
-                success: false,
-                message: "Trip expense not found"
-            });
+            throw new HttpError(404, "Trip expense not found");
         }
 
         return res.status(200).json({
@@ -86,54 +85,39 @@ const getExpenseById = async (req, res) => {
             expense
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const updateStatus = async (req, res) => {
     try {
-        const {
-            status,
-            approved_amount
-        } = req.body;
+        const { status, approved_amount } = req.body;
 
-        if (!["PENDING", "APPROVED", "REJECTED"].includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid expense status"
-            });
+        if (!isAllowedStatus("expense", status)) {
+            throw new HttpError(400, "Invalid expense status");
         }
 
-        const updated = await tripExpenseModel.updateStatus(
+        if (
+            status === "APPROVED" &&
+            approved_amount != null &&
+            !isValidAmount(approved_amount)
+        ) {
+            throw new HttpError(400, "approved_amount must be a valid amount");
+        }
+
+        await tripExpenseModel.updateStatus(
             req.params.id,
             req.user.company_id,
             status,
-            approved_amount || 0
+            approved_amount
         );
-
-        if (!updated) {
-            return res.status(404).json({
-                success: false,
-                message: "Trip expense not found"
-            });
-        }
 
         return res.status(200).json({
             success: true,
             message: "Trip expense status updated successfully"
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

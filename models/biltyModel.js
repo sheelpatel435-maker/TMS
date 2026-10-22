@@ -1,16 +1,26 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
 
-const getBilties = async (companyId) => {
+const getBilties = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "bilties",
+        columns: `id, company_id, bilty_number, client_id, status, trip_id, created_at, updated_at`,
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
+};
+
+const findByNumber = async (companyId, biltyNumber) => {
     const [rows] = await db.execute(
-        `SELECT id, company_id, bilty_number, client_id,
-                status, trip_id, created_at, updated_at
+        `SELECT id
          FROM bilties
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
+         WHERE company_id = ? AND bilty_number = ?
+         LIMIT 1`,
+        [companyId, biltyNumber]
     );
 
-    return rows;
+    return rows[0] || null;
 };
 
 const createBilty = async (companyId, data) => {
@@ -32,5 +42,6 @@ const createBilty = async (companyId, data) => {
 
 module.exports = {
     getBilties,
+    findByNumber,
     createBilty
 };

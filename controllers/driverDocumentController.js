@@ -1,39 +1,55 @@
 const driverDocumentModel = require("../models/driverDocumentModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing, firstPresent } = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
+
+const resolveDriverId = (req) =>
+    firstPresent(
+        req.params?.driverId,
+        req.body?.driver_id,
+        req.query?.driver_id
+    );
 
 const getDriverDocuments = async (req, res) => {
     try {
-        const { driverId } = req.params;
+        const driverId = resolveDriverId(req);
 
-        const documents = await driverDocumentModel.getDriverDocuments(
-            req.user.company_id,
-            driverId
-        );
+        if (driverId) {
+            await assertOwned("drivers", driverId, req.user.company_id, "Driver");
+        }
+
+        const { rows: documents, pagination } =
+            await driverDocumentModel.getDriverDocuments(
+                req.user.company_id,
+                driverId || null,
+                parsePagination(req.query)
+            );
 
         return res.status(200).json({
             success: true,
-            documents
+            documents,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const createDriverDocument = async (req, res) => {
     try {
-        const { driverId } = req.params;
+        const driverId = resolveDriverId(req);
         const { document_type } = req.body;
 
-        if (!document_type) {
-            return res.status(400).json({
-                success: false,
-                message: "Document type is required"
-            });
+        if (isMissing(driverId)) {
+            throw new HttpError(400, "driverId is required");
         }
+
+        if (isMissing(document_type)) {
+            throw new HttpError(400, "Document type is required");
+        }
+
+        await assertOwned("drivers", driverId, req.user.company_id, "Driver");
 
         const id = await driverDocumentModel.createDriverDocument(
             req.user.company_id,
@@ -47,12 +63,7 @@ const createDriverDocument = async (req, res) => {
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

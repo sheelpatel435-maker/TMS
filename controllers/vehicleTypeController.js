@@ -1,21 +1,22 @@
 const vehicleTypeModel = require("../models/vehicleTypeModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing } = require("../utils/validation");
 
 const getVehicleTypes = async (req, res) => {
     try {
-        const vehicleTypes =
-            await vehicleTypeModel.getVehicleTypes();
+        const { rows: vehicleTypes, pagination } =
+            await vehicleTypeModel.getVehicleTypes(
+                parsePagination(req.query)
+            );
 
         return res.status(200).json({
             success: true,
-            vehicleTypes
+            vehicleTypes,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
@@ -23,18 +24,11 @@ const createVehicleType = async (req, res) => {
     try {
         const { name, status } = req.body;
 
-        if (!name) {
-            return res.status(400).json({
-                success: false,
-                message: "name is required"
-            });
+        if (isMissing(name)) {
+            throw new HttpError(400, "name is required");
         }
 
-        const id =
-            await vehicleTypeModel.createVehicleType(
-                name,
-                status ?? 1
-            );
+        const id = await vehicleTypeModel.createVehicleType(name, status);
 
         return res.status(201).json({
             success: true,
@@ -42,12 +36,7 @@ const createVehicleType = async (req, res) => {
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

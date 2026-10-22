@@ -1,4 +1,7 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { HttpError } = require("../utils/httpError");
+const { assertTransition } = require("../utils/statusTransitions");
 
 const createAdvance = async (data) => {
     const [result] = await db.execute(
@@ -26,16 +29,14 @@ const createAdvance = async (data) => {
     return result.insertId;
 };
 
-const getAdvances = async (companyId) => {
-    const [rows] = await db.execute(
-        `SELECT *
-         FROM trip_advances
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
-    );
-
-    return rows;
+const getAdvances = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "trip_advances",
+        columns: "*",
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
 };
 
 const getAdvanceById = async (id, companyId) => {
@@ -51,6 +52,14 @@ const getAdvanceById = async (id, companyId) => {
 };
 
 const updateStatus = async (id, companyId, status) => {
+    const advance = await getAdvanceById(id, companyId);
+
+    if (!advance) {
+        throw new HttpError(404, "Trip advance not found");
+    }
+
+    assertTransition("advance", advance.status, status);
+
     const [result] = await db.execute(
         `UPDATE trip_advances
          SET status = ?

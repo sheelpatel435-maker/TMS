@@ -1,36 +1,18 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { toTinyIntStatus, firstPresent } = require("../utils/validation");
 
-const getClients = async (companyId) => {
-    const [rows] = await db.execute(
-        `SELECT
-            id,
-            company_id,
-            name,
-            mobile,
-            email,
-            address,
-            gst_number,
-            status,
-            created_at,
-            updated_at
-         FROM clients
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
-    );
-
-    return rows;
+const getClients = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "clients",
+        columns: `id, company_id, name, mobile, email, address, gst_number, status, created_at, updated_at`,
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
 };
 
-const createClient = async (
-    companyId,
-    name,
-    mobile,
-    email,
-    address,
-    gstNumber,
-    status
-) => {
+const createClient = async (companyId, data) => {
     const [result] = await db.execute(
         `INSERT INTO clients
         (
@@ -45,12 +27,12 @@ const createClient = async (
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
             companyId,
-            name,
-            mobile || null,
-            email || null,
-            address || null,
-            gstNumber || null,
-            status ?? 1
+            firstPresent(data.name, data.client_name),
+            data.mobile || null,
+            data.email || null,
+            data.address || null,
+            data.gst_number || null,
+            toTinyIntStatus(data.status, 1)
         ]
     );
 

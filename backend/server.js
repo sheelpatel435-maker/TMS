@@ -1,6 +1,9 @@
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
+const { ensureSchema } = require("../config/schema");
 const moduleRoutes = require("./routes/moduleRoutes");
 const userModuleAccessRoutes = require("./routes/userModuleAccessRoutes");
 const vehicleTypeRoutes = require("./routes/vehicleTypeRoutes");
@@ -20,18 +23,35 @@ const tripFinalReportRoutes = require("./routes/tripFinalReportRoutes");
 const tripSettlementRoutes = require("./routes/tripSettlementRoutes");
 const vehicleAssignmentRoutes = require("./routes/vehicleAssignmentRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
-const invoicePaymentRoutes = require("./routes/invoicePaymentRoutes");  
+const invoicePaymentRoutes = require("./routes/invoicePaymentRoutes");
 const invoicePaymentDeductionRoutes = require("./routes/invoicePaymentDeductionRoutes");
-
-require("dotenv").config();
-
-
+const authController = require("../controllers/authController");
+const authMiddleware = require("../middleware/authMiddleware");
 
 const app = express();
 
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+    if (process.env.NODE_ENV !== "production") {
+        return next();
+    }
+
+    const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
+
+    if (secure) {
+        return next();
+    }
+
+    return res.status(403).json({
+        success: false,
+        message: "HTTPS is required"
+    });
+});
+
 app.use("/api/modules", moduleRoutes);
 app.use("/api/user-module-access", userModuleAccessRoutes);
 app.use("/api/vehicle-types", vehicleTypeRoutes);
@@ -44,6 +64,10 @@ app.use("/api/helper-documents", helperDocumentRoutes);
 app.use("/api/vehicle-assignments", vehicleAssignmentRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/auth", authRoutes);
+app.post("/api/login", authController.login);
+app.post("/api/refresh", authController.refresh);
+app.post("/api/logout", authMiddleware, authController.logout);
+app.get("/api/profile", authMiddleware, authController.profile);
 app.use("/api/bilties", biltyRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/trip-advances", tripAdvanceRoutes);
@@ -52,12 +76,9 @@ app.use("/api/trip-final-reports", tripFinalReportRoutes);
 app.use("/api/trip-settlements", tripSettlementRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/invoice-payments", invoicePaymentRoutes);
-app.use("/api/invoice-payment-deductions",invoicePaymentDeductionRoutes);
-
-
+app.use("/api/invoice-payment-deductions", invoicePaymentDeductionRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
-
 
 app.get("/api", (req, res) => {
     res.status(200).json({
@@ -66,10 +87,17 @@ app.get("/api", (req, res) => {
     });
 });
 
-
-
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-    console.log(`TMS Server running on http://localhost:${PORT}`);
+const start = async () => {
+    await ensureSchema();
+
+    app.listen(PORT, () => {
+        console.log(`TMS Server running on http://localhost:${PORT}`);
+    });
+};
+
+start().catch((error) => {
+    console.error("Failed to start TMS server", error);
+    process.exit(1);
 });

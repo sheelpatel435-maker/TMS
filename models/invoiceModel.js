@@ -1,4 +1,6 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { roundMoney } = require("../utils/validation");
 
 const createInvoice = async (data) => {
     const connection = await db.getConnection();
@@ -13,38 +15,26 @@ const createInvoice = async (data) => {
                 client_id,
                 invoice_number,
                 invoice_date,
-                due_date,
-                service_description,
-                hsn_sac_code,
-                exemption_notification,
+                taxable_amount,
                 subtotal,
                 tax_amount,
                 total_amount,
+                deduction_amount,
                 balance_amount,
-                tds_amount,
-                other_deduction_amount,
-                net_receivable_amount,
-                status,
-                created_by
+                status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
             [
                 data.company_id,
                 data.client_id,
                 data.invoice_number,
                 data.invoice_date,
-                data.due_date,
-                data.service_description,
-                data.hsn_sac_code,
-                data.exemption_notification,
+                data.taxable_amount,
                 data.subtotal,
                 data.tax_amount,
                 data.total_amount,
-                data.balance_amount,
-                data.tds_amount,
-                data.other_deduction_amount,
-                data.net_receivable_amount,
-                data.created_by
+                data.deduction_amount,
+                data.balance_amount
             ]
         );
 
@@ -59,57 +49,25 @@ const createInvoice = async (data) => {
                         invoice_id,
                         trip_id,
                         bilty_id,
-                        serial_no,
-                        consignor_tax_invoice_no,
-                        consignor_invoice_date,
-                        consignor_name,
-                        from_location,
-                        destination,
-                        vehicle_id,
-                        vehicle_type,
-                        gr_lr_no,
-                        freight_amount,
-                        detention_charges,
-                        hamali_charges,
+                        description,
+                        freight,
+                        detention,
+                        hamali,
                         other_charges,
-                        line_total,
-                        reporting_date,
-                        delivery_date,
-                        total_qty_load,
-                        charge_weight,
-                        rate,
-                        rate_unit,
-                        billing_status,
-                        description
+                        item_total
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         data.company_id,
                         invoiceId,
                         item.trip_id || null,
                         item.bilty_id || null,
-                        item.serial_no,
-                        item.consignor_tax_invoice_no || null,
-                        item.consignor_invoice_date || null,
-                        item.consignor_name || null,
-                        item.from_location || null,
-                        item.destination || null,
-                        item.vehicle_id || null,
-                        item.vehicle_type || null,
-                        item.gr_lr_no || null,
-                        item.freight_amount || 0,
-                        item.detention_charges || 0,
-                        item.hamali_charges || 0,
+                        item.description || null,
+                        item.freight || 0,
+                        item.detention || 0,
+                        item.hamali || 0,
                         item.other_charges || 0,
-                        item.line_total || 0,
-                        item.reporting_date || null,
-                        item.delivery_date || null,
-                        item.total_qty_load || null,
-                        item.charge_weight || null,
-                        item.rate || null,
-                        item.rate_unit || null,
-                        item.billing_status || "BILLABLE",
-                        item.description || null
+                        item.item_total || 0
                     ]
                 );
             }
@@ -126,16 +84,14 @@ const createInvoice = async (data) => {
     }
 };
 
-const getInvoices = async (companyId) => {
-    const [rows] = await db.execute(
-        `SELECT *
-         FROM invoices
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
-    );
-
-    return rows;
+const getInvoices = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "invoices",
+        columns: "*",
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
 };
 
 const getInvoiceById = async (id, companyId) => {
@@ -155,7 +111,7 @@ const getInvoiceById = async (id, companyId) => {
         `SELECT *
          FROM invoice_items
          WHERE invoice_id = ? AND company_id = ?
-         ORDER BY serial_no ASC`,
+         ORDER BY id ASC`,
         [id, companyId]
     );
 
@@ -163,6 +119,18 @@ const getInvoiceById = async (id, companyId) => {
         ...invoiceRows[0],
         items
     };
+};
+
+const findByNumber = async (companyId, invoiceNumber) => {
+    const [rows] = await db.execute(
+        `SELECT id
+         FROM invoices
+         WHERE company_id = ? AND invoice_number = ?
+         LIMIT 1`,
+        [companyId, invoiceNumber]
+    );
+
+    return rows[0] || null;
 };
 
 const updateStatus = async (id, companyId, status) => {
@@ -176,9 +144,40 @@ const updateStatus = async (id, companyId, status) => {
     return result.affectedRows;
 };
 
+const applyPaymentToBalance = async (connection, invoice, netAmount, direction) => {
+    const delta = direction === "credit" ? -roundMoney(netAmount) : roundMoney(netAmount);
+    const nextBalance = roundMoney(Number(invoice.balance_amount) + delta);
+    const safeBalance = nextBalance < 0 ? 0 : nextBalance;
+    const total = roundMoney(invoice.total_amount);
+
+    let nextStatus = invoice.status;
+
+    if (!["DRAFT", "CANCELLED"].includes(invoice.status)) {
+        if (safeBalance <= 0) {
+            nextStatus = "PAID";
+        } else if (safeBalance < total) {
+            nextStatus = "PARTIAL";
+        } else if (invoice.status === "PAID" || invoice.status === "PARTIAL") {
+            nextStatus = "SENT";
+        }
+    }
+
+    await connection.execute(
+        `UPDATE invoices
+         SET balance_amount = ?,
+             status = ?
+         WHERE id = ? AND company_id = ?`,
+        [safeBalance, nextStatus, invoice.id, invoice.company_id]
+    );
+
+    return { balance_amount: safeBalance, status: nextStatus };
+};
+
 module.exports = {
     createInvoice,
     getInvoices,
     getInvoiceById,
-    updateStatus
+    findByNumber,
+    updateStatus,
+    applyPaymentToBalance
 };

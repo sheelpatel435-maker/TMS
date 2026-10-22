@@ -1,88 +1,70 @@
 const tripSettlementModel = require("../models/tripSettlementModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing } = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
+const { isAllowedStatus } = require("../utils/statusTransitions");
 
 const createSettlement = async (req, res) => {
     try {
-        const {
-            trip_id,
-            settlement_no,
-            total_advance,
-            total_approved_expense,
-            carry_forward_in,
-            net_balance,
-            settlement_type,
-            settlement_amount
-        } = req.body;
+        const { trip_id, settlement_type, remarks, settlement_no } = req.body;
 
-        if (!trip_id || !settlement_no || !settlement_type) {
-            return res.status(400).json({
-                success: false,
-                message: "trip_id, settlement_no and settlement_type are required"
-            });
+        if (isMissing(trip_id)) {
+            throw new HttpError(400, "trip_id is required");
         }
 
-        const settlementId =
-            await tripSettlementModel.createSettlement({
-                company_id: req.user.company_id,
-                trip_id,
-                settlement_no,
-                total_advance: total_advance || 0,
-                total_approved_expense: total_approved_expense || 0,
-                carry_forward_in: carry_forward_in || 0,
-                net_balance: net_balance || 0,
-                settlement_type,
-                settlement_amount: settlement_amount || 0,
-                prepared_by: req.user.id
-            });
+        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
+
+        const totals = await tripSettlementModel.computeTotals(
+            req.user.company_id,
+            trip_id
+        );
+
+        const settlementId = await tripSettlementModel.createSettlement({
+            company_id: req.user.company_id,
+            trip_id,
+            settlement_type,
+            remarks: remarks || settlement_no || null
+        });
 
         return res.status(201).json({
             success: true,
             message: "Trip settlement created successfully",
-            settlement_id: settlementId
+            settlement_id: settlementId,
+            totals
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const getSettlements = async (req, res) => {
     try {
-        const settlements =
+        const { rows: settlements, pagination } =
             await tripSettlementModel.getSettlements(
-                req.user.company_id
+                req.user.company_id,
+                parsePagination(req.query)
             );
 
         return res.status(200).json({
             success: true,
-            settlements
+            settlements,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const getSettlementById = async (req, res) => {
     try {
-        const settlement =
-            await tripSettlementModel.getSettlementById(
-                req.params.id,
-                req.user.company_id
-            );
+        const settlement = await tripSettlementModel.getSettlementById(
+            req.params.id,
+            req.user.company_id
+        );
 
         if (!settlement) {
-            return res.status(404).json({
-                success: false,
-                message: "Settlement not found"
-            });
+            throw new HttpError(404, "Settlement not found");
         }
 
         return res.status(200).json({
@@ -90,60 +72,38 @@ const getSettlementById = async (req, res) => {
             settlement
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const updateStatus = async (req, res) => {
     try {
         const { status } = req.body;
+        const aliases = {
+            PENDING_APPROVAL: "PENDING",
+            APPROVED: "SETTLED",
+            PAID: "SETTLED",
+            CLOSED: "SETTLED",
+            CARRIED_FORWARD: "CARRY_FORWARD"
+        };
+        const mapped = aliases[status] || status;
 
-        const allowedStatuses = [
-            "PENDING_APPROVAL",
-            "APPROVED",
-            "PAID",
-            "CARRIED_FORWARD",
-            "CLOSED"
-        ];
-
-        if (!allowedStatuses.includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid settlement status"
-            });
+        if (!isAllowedStatus("settlement", mapped)) {
+            throw new HttpError(400, "Invalid settlement status");
         }
 
-        const updated =
-            await tripSettlementModel.updateStatus(
-                req.params.id,
-                req.user.company_id,
-                status,
-                req.user.id
-            );
-
-        if (!updated) {
-            return res.status(404).json({
-                success: false,
-                message: "Settlement not found"
-            });
-        }
+        await tripSettlementModel.updateStatus(
+            req.params.id,
+            req.user.company_id,
+            mapped
+        );
 
         return res.status(200).json({
             success: true,
             message: "Settlement status updated successfully"
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

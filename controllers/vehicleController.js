@@ -1,35 +1,39 @@
 const vehicleModel = require("../models/vehicleModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing } = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
 
 const getVehicles = async (req, res) => {
     try {
-        const vehicles = await vehicleModel.getVehicles(
-            req.user.company_id
+        const { rows: vehicles, pagination } = await vehicleModel.getVehicles(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            vehicles
+            vehicles,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const createVehicle = async (req, res) => {
     try {
-        const { registration_no } = req.body;
+        const { vehicle_type_id, registration_no } = req.body;
 
-        if (!registration_no) {
-            return res.status(400).json({
-                success: false,
-                message: "Registration number is required"
-            });
+        if (isMissing(vehicle_type_id)) {
+            throw new HttpError(400, "Vehicle type is required");
         }
+
+        if (isMissing(registration_no)) {
+            throw new HttpError(400, "Registration number is required");
+        }
+
+        await assertOwned("vehicle_types", vehicle_type_id, req.user.company_id, "Vehicle type");
 
         const id = await vehicleModel.createVehicle(
             req.user.company_id,
@@ -42,12 +46,7 @@ const createVehicle = async (req, res) => {
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

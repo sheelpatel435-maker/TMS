@@ -1,47 +1,24 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { toTinyIntStatus } = require("../utils/validation");
 
-const getVehicleDocuments = async (companyId, vehicleId = null) => {
-    let query = `
-        SELECT
-            id,
-            company_id,
-            vehicle_id,
-            document_type,
-            document_number,
-            document_url,
-            issue_date,
-            expiry_date,
-            status,
-            created_at,
-            updated_at
-        FROM vehicle_documents
-        WHERE company_id = ?
-    `;
+const getVehicleDocuments = async (companyId, vehicleId, pagination) => {
+    const where = vehicleId
+        ? "company_id = ? AND vehicle_id = ?"
+        : "company_id = ?";
+    const params = vehicleId ? [companyId, vehicleId] : [companyId];
 
-    const params = [companyId];
-
-    if (vehicleId) {
-        query += ` AND vehicle_id = ?`;
-        params.push(vehicleId);
-    }
-
-    query += ` ORDER BY id DESC`;
-
-    const [rows] = await db.execute(query, params);
-
-    return rows;
+    return paginatedSelect(db, {
+        table: "vehicle_documents",
+        columns: `id, company_id, vehicle_id, document_type, document_number,
+                  document_url, issue_date, expiry_date, status, created_at, updated_at`,
+        where,
+        params,
+        pagination
+    });
 };
 
-const createVehicleDocument = async (
-    companyId,
-    vehicleId,
-    documentType,
-    documentNumber,
-    documentUrl,
-    issueDate,
-    expiryDate,
-    status
-) => {
+const createVehicleDocument = async (companyId, vehicleId, data) => {
     const [result] = await db.execute(
         `INSERT INTO vehicle_documents
         (
@@ -58,12 +35,12 @@ const createVehicleDocument = async (
         [
             companyId,
             vehicleId,
-            documentType,
-            documentNumber || null,
-            documentUrl || null,
-            issueDate || null,
-            expiryDate || null,
-            status || 1
+            data.document_type,
+            data.document_number || null,
+            data.document_url || null,
+            data.issue_date || null,
+            data.expiry_date || null,
+            toTinyIntStatus(data.status, 1)
         ]
     );
 

@@ -1,4 +1,7 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { HttpError } = require("../utils/httpError");
+const { assertTransition } = require("../utils/statusTransitions");
 
 const createReport = async (data) => {
     const [result] = await db.execute(
@@ -34,16 +37,14 @@ const createReport = async (data) => {
     return result.insertId;
 };
 
-const getReports = async (companyId) => {
-    const [rows] = await db.execute(
-        `SELECT *
-         FROM trip_final_reports
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
-    );
-
-    return rows;
+const getReports = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "trip_final_reports",
+        columns: "*",
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
 };
 
 const getReportById = async (id, companyId) => {
@@ -59,6 +60,14 @@ const getReportById = async (id, companyId) => {
 };
 
 const updateStatus = async (id, companyId, status, verifiedBy) => {
+    const report = await getReportById(id, companyId);
+
+    if (!report) {
+        throw new HttpError(404, "Final report not found");
+    }
+
+    assertTransition("finalReport", report.status, status);
+
     const [result] = await db.execute(
         `UPDATE trip_final_reports
          SET status = ?,

@@ -1,44 +1,18 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
 
-const getTrips = async (companyId) => {
-    const [rows] = await db.execute(
-        `SELECT
-            id,
-            company_id,
-            vehicle_id,
-            driver_id,
-            helper_id,
-            bilty_id,
-            client_id,
-            source,
-            destination,
-            start_date,
-            end_date,
-            status,
-            created_at,
-            updated_at
-         FROM trips
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
-    );
-
-    return rows;
+const getTrips = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "trips",
+        columns: `id, company_id, vehicle_id, driver_id, helper_id, bilty_id, client_id,
+                  source, destination, start_date, end_date, status, created_at, updated_at`,
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
 };
 
-const createTrip = async (
-    companyId,
-    vehicleId,
-    driverId,
-    helperId,
-    biltyId,
-    clientId,
-    source,
-    destination,
-    startDate,
-    endDate,
-    status
-) => {
+const createTrip = async (companyId, data) => {
     const [result] = await db.execute(
         `INSERT INTO trips
         (
@@ -57,16 +31,16 @@ const createTrip = async (
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             companyId,
-            vehicleId,
-            driverId,
-            helperId || null,
-            biltyId || null,
-            clientId || null,
-            source,
-            destination,
-            startDate || null,
-            endDate || null,
-            status || "CREATED"
+            data.vehicle_id,
+            data.driver_id,
+            data.helper_id || null,
+            data.bilty_id || null,
+            data.client_id || null,
+            data.source,
+            data.destination,
+            data.start_date || null,
+            data.end_date || null,
+            data.status || "CREATED"
         ]
     );
 

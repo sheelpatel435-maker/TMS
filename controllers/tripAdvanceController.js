@@ -1,4 +1,9 @@
 const tripAdvanceModel = require("../models/tripAdvanceModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing, requirePositiveAmount } = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
+const { isAllowedStatus } = require("../utils/statusTransitions");
 
 const createAdvance = async (req, res) => {
     try {
@@ -10,17 +15,18 @@ const createAdvance = async (req, res) => {
             reference_no
         } = req.body;
 
-        if (!trip_id || amount === undefined) {
-            return res.status(400).json({
-                success: false,
-                message: "trip_id and amount are required"
-            });
+        if (isMissing(trip_id) || isMissing(amount)) {
+            throw new HttpError(400, "trip_id and amount are required");
         }
+
+        const parsedAmount = requirePositiveAmount(amount, "amount");
+
+        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
 
         const advanceId = await tripAdvanceModel.createAdvance({
             company_id: req.user.company_id,
             trip_id,
-            amount,
+            amount: parsedAmount,
             payment_date: payment_date || null,
             payment_method: payment_method || null,
             reference_no: reference_no || null
@@ -32,32 +38,24 @@ const createAdvance = async (req, res) => {
             advance_id: advanceId
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const getAdvances = async (req, res) => {
     try {
-        const advances = await tripAdvanceModel.getAdvances(
-            req.user.company_id
+        const { rows: advances, pagination } = await tripAdvanceModel.getAdvances(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            advances
+            advances,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
@@ -69,10 +67,7 @@ const getAdvanceById = async (req, res) => {
         );
 
         if (!advance) {
-            return res.status(404).json({
-                success: false,
-                message: "Trip advance not found"
-            });
+            throw new HttpError(404, "Trip advance not found");
         }
 
         return res.status(200).json({
@@ -80,12 +75,7 @@ const getAdvanceById = async (req, res) => {
             advance
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
@@ -93,37 +83,22 @@ const updateStatus = async (req, res) => {
     try {
         const { status } = req.body;
 
-        if (!["PENDING", "APPROVED", "PAID", "CANCELLED"].includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid advance status"
-            });
+        if (!isAllowedStatus("advance", status)) {
+            throw new HttpError(400, "Invalid advance status");
         }
 
-        const updated = await tripAdvanceModel.updateStatus(
+        await tripAdvanceModel.updateStatus(
             req.params.id,
             req.user.company_id,
             status
         );
-
-        if (!updated) {
-            return res.status(404).json({
-                success: false,
-                message: "Trip advance not found"
-            });
-        }
 
         return res.status(200).json({
             success: true,
             message: "Trip advance status updated successfully"
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

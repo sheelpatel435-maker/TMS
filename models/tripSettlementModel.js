@@ -1,49 +1,82 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { HttpError } = require("../utils/httpError");
+const { assertTransition } = require("../utils/statusTransitions");
+const { roundMoney } = require("../utils/validation");
+
+const computeTotals = async (companyId, tripId) => {
+    const [advanceRows] = await db.execute(
+        `SELECT COALESCE(SUM(amount), 0) AS total_advance
+         FROM trip_advances
+         WHERE company_id = ?
+         AND trip_id = ?
+         AND status IN ('APPROVED', 'PAID')`,
+        [companyId, tripId]
+    );
+
+    const [expenseRows] = await db.execute(
+        `SELECT COALESCE(SUM(approved_amount), 0) AS total_expenses
+         FROM trip_expenses
+         WHERE company_id = ?
+         AND trip_id = ?
+         AND status = 'APPROVED'`,
+        [companyId, tripId]
+    );
+
+    const totalAdvance = roundMoney(advanceRows[0].total_advance);
+    const totalExpenses = roundMoney(expenseRows[0].total_expenses);
+    const balanceAmount = roundMoney(totalAdvance - totalExpenses);
+
+    return {
+        total_advance: totalAdvance,
+        total_expenses: totalExpenses,
+        final_amount: totalExpenses,
+        balance_amount: balanceAmount
+    };
+};
 
 const createSettlement = async (data) => {
+    const totals = await computeTotals(data.company_id, data.trip_id);
+    const status = ["CARRY_FORWARD", "CARRIED_FORWARD"].includes(data.settlement_type)
+        ? "CARRY_FORWARD"
+        : "PENDING";
+
     const [result] = await db.execute(
         `INSERT INTO trip_settlements
         (
             company_id,
             trip_id,
-            settlement_no,
             total_advance,
-            total_approved_expense,
-            carry_forward_in,
-            net_balance,
-            settlement_type,
-            settlement_amount,
-            prepared_by,
-            status
+            total_expenses,
+            final_amount,
+            balance_amount,
+            status,
+            remarks
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             data.company_id,
             data.trip_id,
-            data.settlement_no,
-            data.total_advance,
-            data.total_approved_expense,
-            data.carry_forward_in,
-            data.net_balance,
-            data.settlement_type,
-            data.settlement_amount,
-            data.prepared_by
+            totals.total_advance,
+            totals.total_expenses,
+            totals.final_amount,
+            totals.balance_amount,
+            status,
+            data.remarks || data.settlement_no || null
         ]
     );
 
     return result.insertId;
 };
 
-const getSettlements = async (companyId) => {
-    const [rows] = await db.execute(
-        `SELECT *
-         FROM trip_settlements
-         WHERE company_id = ?
-         ORDER BY id DESC`,
-        [companyId]
-    );
-
-    return rows;
+const getSettlements = async (companyId, pagination) => {
+    return paginatedSelect(db, {
+        table: "trip_settlements",
+        columns: "*",
+        where: "company_id = ?",
+        params: [companyId],
+        pagination
+    });
 };
 
 const getSettlementById = async (id, companyId) => {
@@ -58,20 +91,46 @@ const getSettlementById = async (id, companyId) => {
     return rows[0];
 };
 
-const updateStatus = async (id, companyId, status, approvedBy) => {
-    const [result] = await db.execute(
+const mapIncomingStatus = (status) => {
+    const aliases = {
+        PENDING_APPROVAL: "PENDING",
+        APPROVED: "SETTLED",
+        PAID: "SETTLED",
+        CLOSED: "SETTLED",
+        CARRIED_FORWARD: "CARRY_FORWARD"
+    };
+
+    return aliases[status] || status;
+};
+
+const updateStatus = async (id, companyId, status) => {
+    const settlement = await getSettlementById(id, companyId);
+
+    if (!settlement) {
+        throw new HttpError(404, "Settlement not found");
+    }
+
+    const nextStatus = mapIncomingStatus(status);
+
+    assertTransition("settlement", settlement.status, nextStatus);
+
+    const settledAtSql = nextStatus === "SETTLED"
+        ? "CURRENT_TIMESTAMP"
+        : "settled_at";
+
+    const [result] = await db.query(
         `UPDATE trip_settlements
          SET status = ?,
-             approved_by = ?,
-             settlement_date = CURRENT_TIMESTAMP
+             settled_at = ${settledAtSql}
          WHERE id = ? AND company_id = ?`,
-        [status, approvedBy, id, companyId]
+        [nextStatus, id, companyId]
     );
 
     return result.affectedRows;
 };
 
 module.exports = {
+    computeTotals,
     createSettlement,
     getSettlements,
     getSettlementById,

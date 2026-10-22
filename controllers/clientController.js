@@ -1,39 +1,39 @@
 const clientModel = require("../models/clientModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { firstPresent, isMissing } = require("../utils/validation");
 
 const getClients = async (req, res) => {
     try {
-        const clients = await clientModel.getClients(
-            req.user.company_id
+        const { rows: clients, pagination } = await clientModel.getClients(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            clients
+            clients,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const createClient = async (req, res) => {
     try {
-        const { client_name } = req.body;
+        const name = firstPresent(req.body.name, req.body.client_name);
 
-        if (!client_name) {
-            return res.status(400).json({
-                success: false,
-                message: "Client name is required"
-            });
+        if (isMissing(name)) {
+            throw new HttpError(400, "Client name is required");
         }
 
         const id = await clientModel.createClient(
             req.user.company_id,
-            req.body
+            {
+                ...req.body,
+                name
+            }
         );
 
         return res.status(201).json({
@@ -42,12 +42,7 @@ const createClient = async (req, res) => {
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

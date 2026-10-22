@@ -1,13 +1,13 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
 
-const getAllModules = async () => {
-    const [rows] = await db.execute(
-        `SELECT id, name, status, created_at, updated_at
-         FROM module_definitions
-         ORDER BY id ASC`
-    );
-
-    return rows;
+const getAllModules = async (pagination) => {
+    return paginatedSelect(db, {
+        table: "module_definitions",
+        columns: `id, name, status, created_at, updated_at`,
+        orderBy: "id ASC",
+        pagination
+    });
 };
 
 const getModuleById = async (id) => {

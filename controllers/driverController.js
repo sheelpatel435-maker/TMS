@@ -1,38 +1,32 @@
 const driverModel = require("../models/driverModel");
+const driverDocumentModel = require("../models/driverDocumentModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing } = require("../utils/validation");
 
 const getDrivers = async (req, res) => {
     try {
-        const drivers = await driverModel.getDrivers(
-            req.user.company_id
+        const { rows: drivers, pagination } = await driverModel.getDrivers(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            drivers
+            drivers,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const createDriver = async (req, res) => {
     try {
-        const {
-            name,
-            mobile,
-            license_number
-        } = req.body;
+        const { name, mobile, license_number } = req.body;
 
-        if (!name || !mobile || !license_number) {
-            return res.status(400).json({
-                success: false,
-                message: "Name, mobile and license number are required"
-            });
+        if (isMissing(name) || isMissing(mobile)) {
+            throw new HttpError(400, "Name and mobile are required");
         }
 
         const id = await driverModel.createDriver(
@@ -40,18 +34,25 @@ const createDriver = async (req, res) => {
             req.body
         );
 
+        if (!isMissing(license_number)) {
+            await driverDocumentModel.createDriverDocument(
+                req.user.company_id,
+                id,
+                {
+                    document_type: "LICENSE",
+                    document_number: license_number,
+                    status: 1
+                }
+            );
+        }
+
         return res.status(201).json({
             success: true,
             message: "Driver created successfully",
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

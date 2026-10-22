@@ -1,39 +1,60 @@
 const biltyModel = require("../models/biltyModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError, HttpError } = require("../utils/httpError");
+const { isMissing } = require("../utils/validation");
+const { assertOwned } = require("../utils/companyScope");
+
+const ALLOWED_STATUSES = ["RESERVED", "CREATED", "CANCELLED", "COMPLETED"];
 
 const getBilties = async (req, res) => {
     try {
-        const bilties = await biltyModel.getBilties(
-            req.user.company_id
+        const { rows: bilties, pagination } = await biltyModel.getBilties(
+            req.user.company_id,
+            parsePagination(req.query)
         );
 
         return res.status(200).json({
             success: true,
-            bilties
+            bilties,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 
 const createBilty = async (req, res) => {
     try {
-        const { bilty_number } = req.body;
+        const { bilty_number, client_id, trip_id, status } = req.body;
 
-        if (!bilty_number) {
-            return res.status(400).json({
-                success: false,
-                message: "Bilty number is required"
-            });
+        if (isMissing(bilty_number)) {
+            throw new HttpError(400, "Bilty number is required");
         }
+
+        const biltyStatus = status || "CREATED";
+
+        if (!ALLOWED_STATUSES.includes(biltyStatus)) {
+            throw new HttpError(400, "Invalid bilty status");
+        }
+
+        const existing = await biltyModel.findByNumber(
+            req.user.company_id,
+            bilty_number
+        );
+
+        if (existing) {
+            throw new HttpError(409, "Bilty number already exists");
+        }
+
+        await assertOwned("clients", client_id, req.user.company_id, "Client");
+        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
 
         const id = await biltyModel.createBilty(
             req.user.company_id,
-            req.body
+            {
+                ...req.body,
+                status: biltyStatus
+            }
         );
 
         return res.status(201).json({
@@ -42,12 +63,7 @@ const createBilty = async (req, res) => {
             id
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

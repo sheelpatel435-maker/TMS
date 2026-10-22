@@ -1,18 +1,14 @@
 const db = require("../config/db");
+const { paginatedSelect } = require("../utils/pagination");
+const { toTinyIntStatus } = require("../utils/validation");
 
-const getVehicleTypes = async () => {
-    const [rows] = await db.execute(
-        `SELECT
-            id,
-            name,
-            status,
-            created_at,
-            updated_at
-         FROM vehicle_types
-         ORDER BY id ASC`
-    );
-
-    return rows;
+const getVehicleTypes = async (pagination) => {
+    return paginatedSelect(db, {
+        table: "vehicle_types",
+        columns: `id, name, status, created_at, updated_at`,
+        orderBy: "id ASC",
+        pagination
+    });
 };
 
 const createVehicleType = async (name, status = 1) => {
@@ -20,7 +16,7 @@ const createVehicleType = async (name, status = 1) => {
         `INSERT INTO vehicle_types
         (name, status)
         VALUES (?, ?)`,
-        [name, status]
+        [name, toTinyIntStatus(status, 1)]
     );
 
     return result.insertId;

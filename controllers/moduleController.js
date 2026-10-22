@@ -1,20 +1,20 @@
 const moduleModel = require("../models/moduleModel");
+const { parsePagination } = require("../utils/pagination");
+const { sendError } = require("../utils/httpError");
 
 const getModules = async (req, res) => {
     try {
-        const modules = await moduleModel.getAllModules();
+        const { rows: modules, pagination } = await moduleModel.getAllModules(
+            parsePagination(req.query)
+        );
 
         return res.status(200).json({
             success: true,
-            modules
+            modules,
+            pagination
         });
     } catch (error) {
-        console.error(error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+        return sendError(res, error);
     }
 };
 

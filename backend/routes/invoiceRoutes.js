@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
 
-const authMiddleware = require("../middleware/authMiddleware");
-const controller = require("../controllers/invoiceController");
+const authMiddleware = require("../../middleware/authMiddleware");
+const controller = require("../../controllers/invoiceController");
 
 router.use(authMiddleware);
 
