@@ -236,12 +236,43 @@ const dashboardContainer =
 if (
     dashboardContainer &&
     !document.getElementById("profileForm") &&
-    !document.getElementById("companyForm")
+    !document.getElementById("companyForm") &&
+    !document.getElementById("driverForm")
 ) {
 
     loadDashboard();
 }
 
+
+async function loadDashboardDriverCount(token) {
+    const driverCountEl =
+        document.getElementById("driverCount");
+
+    if (!driverCountEl || !document.querySelector(".stats-grid")) {
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            "/api/drivers?limit=1",
+            {
+                method: "GET",
+                headers: {
+                    Authorization: "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (data.success) {
+            driverCountEl.innerText =
+                data.pagination?.total ?? data.drivers.length;
+        }
+    } catch (error) {
+        console.error("DASHBOARD DRIVER COUNT ERROR:", error);
+    }
+}
 
 async function loadDashboard() {
 
@@ -304,6 +335,8 @@ async function loadDashboard() {
         }
     }
 
+    await loadDashboardDriverCount(token);
+
     try {
 
         const response =
@@ -350,10 +383,15 @@ async function loadDashboard() {
         ).innerText =
             data.stats.vehicles;
 
-        document.getElementById(
-            "driverCount"
-        ).innerText =
-            data.stats.drivers;
+        const driverCountEl =
+            document.getElementById(
+                "driverCount"
+            );
+
+        if (driverCountEl) {
+            driverCountEl.innerText =
+                data.stats.drivers;
+        }
 
         document.getElementById(
             "helperCount"
@@ -379,6 +417,16 @@ async function loadDashboard() {
             "invoiceCount"
         ).innerText =
             data.stats.invoices;
+
+        const expiringCountEl =
+            document.getElementById(
+                "expiringCount"
+            );
+
+        if (expiringCountEl) {
+            expiringCountEl.innerText =
+                data.stats.expiring_documents ?? 0;
+        }
 
         if (data.message) {
 

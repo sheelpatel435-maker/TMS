@@ -25,15 +25,32 @@ const vehicleAssignmentRoutes = require("./routes/vehicleAssignmentRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
 const invoicePaymentRoutes = require("./routes/invoicePaymentRoutes");
 const invoicePaymentDeductionRoutes = require("./routes/invoicePaymentDeductionRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const auditLogRoutes = require("./routes/auditLogRoutes");
+const documentExpiryRoutes = require("./routes/documentExpiryRoutes");
 const authController = require("../controllers/authController");
+const dashboardController = require("../controllers/dashboardController");
 const authMiddleware = require("../middleware/authMiddleware");
+const { uploadDir } = require("../middleware/upload");
 
 const app = express();
 
 app.set("trust proxy", 1);
-app.use(cors());
+
+const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:5000")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+app.use(
+    cors({
+        origin: corsOrigins,
+        credentials: true
+    })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(uploadDir));
 
 app.use((req, res, next) => {
     if (process.env.NODE_ENV !== "production") {
@@ -68,6 +85,7 @@ app.post("/api/login", authController.login);
 app.post("/api/refresh", authController.refresh);
 app.post("/api/logout", authMiddleware, authController.logout);
 app.get("/api/profile", authMiddleware, authController.profile);
+app.get("/api/dashboard", authMiddleware, dashboardController.getDashboard);
 app.use("/api/bilties", biltyRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/trip-advances", tripAdvanceRoutes);
@@ -77,6 +95,9 @@ app.use("/api/trip-settlements", tripSettlementRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/invoice-payments", invoicePaymentRoutes);
 app.use("/api/invoice-payment-deductions", invoicePaymentDeductionRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/documents", documentExpiryRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -90,6 +111,10 @@ app.get("/api", (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 const start = async () => {
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+        throw new Error("JWT_SECRET must be set in env and be at least 32 characters");
+    }
+
     await ensureSchema();
 
     app.listen(PORT, () => {

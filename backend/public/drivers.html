@@ -51,6 +51,8 @@
 
         <div class="vehicle-form" id="driverForm">
 
+            <input type="hidden" id="driverId" value="">
+
             <div class="form-group">
 
                 <label for="name">
@@ -107,6 +109,20 @@
 
             </div>
 
+            <div class="form-group" id="licenseGroup">
+
+                <label for="license_number">
+                    License number
+                </label>
+
+                <input
+                    type="text"
+                    id="license_number"
+                    placeholder="Optional license number"
+                >
+
+            </div>
+
             <div class="form-group">
 
                 <label for="status">
@@ -130,9 +146,19 @@
             <button
                 type="button"
                 id="saveDriver"
-                onclick="addDriver()"
+                onclick="saveDriver()"
             >
                 Save Driver
+            </button>
+
+            <button
+                type="button"
+                id="cancelDriverEdit"
+                class="cancel-edit-btn"
+                onclick="resetDriverForm()"
+                style="display: none;"
+            >
+                Cancel
             </button>
 
         </div>
@@ -153,6 +179,26 @@
 
             </div>
 
+            <div class="list-filters">
+
+                <input
+                    type="text"
+                    id="driverSearch"
+                    placeholder="Search name or mobile"
+                >
+
+                <select id="driverStatusFilter">
+                    <option value="">All statuses</option>
+                    <option value="1">Active</option>
+                    <option value="0">Inactive</option>
+                </select>
+
+                <button type="button" onclick="loadDrivers(1)">
+                    Search
+                </button>
+
+            </div>
+
             <div class="table-wrapper">
 
                 <table class="module-table">
@@ -169,6 +215,7 @@
                             <th>Status</th>
                             <th>Created At</th>
                             <th>Updated At</th>
+                            <th>Actions</th>
                         </tr>
 
                     </thead>
@@ -188,6 +235,8 @@
             >
                 No drivers found
             </div>
+
+            <div id="driverPagination" class="list-pagination"></div>
 
         </div>
 

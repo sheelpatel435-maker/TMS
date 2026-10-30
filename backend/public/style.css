@@ -879,6 +879,51 @@ select:focus {
     background: #d9362a;
 }
 
+.cancel-edit-btn {
+    width: 150px;
+    padding: 12px;
+    border: none;
+    border-radius: 6px;
+    background: #6b7280;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.list-filters {
+    display: flex;
+    gap: 12px;
+    padding: 0 20px 15px;
+    flex-wrap: wrap;
+}
+
+.list-filters input,
+.list-filters select {
+    min-width: 180px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.list-filters button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    background: #222;
+    color: white;
+    font-weight: bold;
+}
+
+.list-pagination {
+    padding: 15px 20px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 14px;
+    color: #555;
+}
+}
+
 #saveHelper {
     width: 150px;
     padding: 12px;
