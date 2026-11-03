@@ -164,6 +164,42 @@ const ensureSchema = async () => {
         )
     `);
 
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS invoice_taxes (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            invoice_id BIGINT UNSIGNED NOT NULL,
+            tax_type VARCHAR(50) NOT NULL,
+            tax_rate DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+            taxable_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            tax_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_invoice_taxes_company (company_id),
+            KEY idx_invoice_taxes_invoice (invoice_id)
+        )
+    `);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS access_logs (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NULL,
+            user_id BIGINT UNSIGNED NULL,
+            session_id VARCHAR(255) NULL,
+            method VARCHAR(10) NOT NULL,
+            endpoint VARCHAR(255) NOT NULL,
+            ip_address VARCHAR(45) NULL,
+            user_agent VARCHAR(500) NULL,
+            response_status SMALLINT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_access_company (company_id),
+            KEY idx_access_user (user_id),
+            KEY idx_access_created (created_at)
+        )
+    `);
+
     if (!(await tableExists("audit_logs"))) {
         await db.query(`
             CREATE TABLE audit_logs (

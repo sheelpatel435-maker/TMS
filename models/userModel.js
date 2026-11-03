@@ -44,9 +44,39 @@ const bumpTokenVersion = async (id) => {
     );
 };
 
+const createUser = async (data) => {
+    const [result] = await db.execute(
+        `INSERT INTO users
+        (company_id, user_type, name, mobile, email, password_hash, status)
+        VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        [
+            data.company_id || null,
+            data.user_type,
+            data.name,
+            data.mobile,
+            data.email || null,
+            data.password_hash
+        ]
+    );
+
+    return result.insertId;
+};
+
+const assignCompanyAdmin = async (userId, companyId) => {
+    await db.execute(
+        `UPDATE users
+         SET company_id = ?,
+             user_type = 'COMPANY_ADMIN'
+         WHERE id = ?`,
+        [companyId, userId]
+    );
+};
+
 module.exports = {
     findUserByEmail,
     findUserById,
     updateLastLogin,
-    bumpTokenVersion
+    bumpTokenVersion,
+    createUser,
+    assignCompanyAdmin
 };

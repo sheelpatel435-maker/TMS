@@ -15,6 +15,7 @@ const helperRoutes = require("./routes/helperRoutes");
 const helperDocumentRoutes = require("./routes/helperDocumentRoutes");
 const clientRoutes = require("./routes/clientRoutes");
 const authRoutes = require("./routes/authRoutes");
+const companyRoutes = require("./routes/companyRoutes");
 const biltyRoutes = require("./routes/biltyRoutes");
 const tripRoutes = require("./routes/tripRoutes");
 const tripAdvanceRoutes = require("./routes/tripAdvanceRoutes");
@@ -31,6 +32,7 @@ const documentExpiryRoutes = require("./routes/documentExpiryRoutes");
 const authController = require("../controllers/authController");
 const dashboardController = require("../controllers/dashboardController");
 const authMiddleware = require("../middleware/authMiddleware");
+const accessLog = require("../middleware/accessLog");
 const { uploadDir } = require("../middleware/upload");
 
 const app = express();
@@ -50,6 +52,7 @@ app.use(
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(accessLog);
 app.use("/uploads", express.static(uploadDir));
 
 app.use((req, res, next) => {
@@ -81,6 +84,8 @@ app.use("/api/helper-documents", helperDocumentRoutes);
 app.use("/api/vehicle-assignments", vehicleAssignmentRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/companies", companyRoutes);
+app.post("/api/register", authController.register);
 app.post("/api/login", authController.login);
 app.post("/api/refresh", authController.refresh);
 app.post("/api/logout", authMiddleware, authController.logout);

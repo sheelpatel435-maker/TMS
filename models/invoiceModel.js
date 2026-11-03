@@ -44,36 +44,11 @@ const createInvoice = async (data) => {
 
         if (Array.isArray(data.items)) {
             for (const item of data.items) {
-                await connection.execute(
-                    `INSERT INTO invoice_items
-                    (
-                        company_id,
-                        invoice_id,
-                        trip_id,
-                        bilty_id,
-                        description,
-                        freight,
-                        detention,
-                        hamali,
-                        other_charges,
-                        item_total
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        data.company_id,
-                        invoiceId,
-                        item.trip_id || null,
-                        item.bilty_id || null,
-                        item.description || null,
-                        item.freight || 0,
-                        item.detention || 0,
-                        item.hamali || 0,
-                        item.other_charges || 0,
-                        item.item_total || 0
-                    ]
-                );
+                await insertItem(connection, data.company_id, invoiceId, item);
             }
         }
+
+        await replaceTaxes(connection, data.company_id, invoiceId, data.taxes);
 
         await connection.commit();
 
@@ -136,10 +111,78 @@ const getInvoiceById = async (id, companyId) => {
         [id, companyId]
     );
 
+    const [taxes] = await db.execute(
+        `SELECT *
+         FROM invoice_taxes
+         WHERE invoice_id = ? AND company_id = ?
+         ORDER BY id ASC`,
+        [id, companyId]
+    );
+
     return {
         ...invoiceRows[0],
-        items
+        items,
+        taxes
     };
+};
+
+const insertItem = async (connection, companyId, invoiceId, item) => {
+    await connection.execute(
+        `INSERT INTO invoice_items
+        (
+            company_id,
+            invoice_id,
+            trip_id,
+            bilty_id,
+            description,
+            freight,
+            detention,
+            hamali,
+            other_charges,
+            item_total
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            companyId,
+            invoiceId,
+            item.trip_id || null,
+            item.bilty_id || null,
+            item.description || null,
+            item.freight || 0,
+            item.detention || 0,
+            item.hamali || 0,
+            item.other_charges || 0,
+            item.item_total || 0
+        ]
+    );
+};
+
+const replaceTaxes = async (connection, companyId, invoiceId, taxes) => {
+    await connection.execute(
+        `DELETE FROM invoice_taxes
+         WHERE invoice_id = ? AND company_id = ?`,
+        [invoiceId, companyId]
+    );
+
+    if (!Array.isArray(taxes)) {
+        return;
+    }
+
+    for (const tax of taxes) {
+        await connection.execute(
+            `INSERT INTO invoice_taxes
+            (company_id, invoice_id, tax_type, tax_rate, taxable_amount, tax_amount)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                companyId,
+                invoiceId,
+                tax.tax_type,
+                tax.tax_rate,
+                tax.taxable_amount,
+                tax.tax_amount
+            ]
+        );
+    }
 };
 
 const findByNumber = async (companyId, invoiceNumber) => {
@@ -200,36 +243,11 @@ const updateInvoice = async (id, companyId, data) => {
 
         if (Array.isArray(data.items)) {
             for (const item of data.items) {
-                await connection.execute(
-                    `INSERT INTO invoice_items
-                    (
-                        company_id,
-                        invoice_id,
-                        trip_id,
-                        bilty_id,
-                        description,
-                        freight,
-                        detention,
-                        hamali,
-                        other_charges,
-                        item_total
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        companyId,
-                        id,
-                        item.trip_id || null,
-                        item.bilty_id || null,
-                        item.description || null,
-                        item.freight || 0,
-                        item.detention || 0,
-                        item.hamali || 0,
-                        item.other_charges || 0,
-                        item.item_total || 0
-                    ]
-                );
+                await insertItem(connection, companyId, id, item);
             }
         }
+
+        await replaceTaxes(connection, companyId, id, data.taxes);
 
         await connection.commit();
         return 1;

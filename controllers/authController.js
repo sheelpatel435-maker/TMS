@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const userModel = require("../models/userModel");
+const companyModel = require("../models/companyModel");
 const refreshTokenModel = require("../models/refreshTokenModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
 const { sendError, HttpError } = require("../utils/httpError");
@@ -202,9 +203,77 @@ const profile = async (req, res) => {
     }
 };
 
+const register = async (req, res) => {
+    try {
+        const name = String(req.body.name || "").trim();
+        const mobile = String(req.body.mobile || "").trim();
+        const email = String(req.body.email || "").trim().toLowerCase();
+        const password = req.body.password;
+        const companyId = req.body.company_id;
+
+        if (!name || !mobile || !password) {
+            throw new HttpError(400, "Name, mobile and password are required");
+        }
+
+        if (String(password).length < 6) {
+            throw new HttpError(400, "Password must be at least 6 characters");
+        }
+
+        if (isMissingCompany(companyId)) {
+            throw new HttpError(400, "company_id is required");
+        }
+
+        const company = await companyModel.getById(companyId);
+
+        if (!company || Number(company.status) !== 1) {
+            throw new HttpError(400, "Company not found");
+        }
+
+        if (email) {
+            const existing = await userModel.findUserByEmail(email);
+
+            if (existing) {
+                throw new HttpError(409, "Email is already registered");
+            }
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+        const userId = await userModel.createUser({
+            company_id: company.id,
+            user_type: "COMPANY_USER",
+            name,
+            mobile,
+            email: email || null,
+            password_hash: passwordHash
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Account created successfully",
+            id: userId
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const isMissingCompany = (value) =>
+    value === undefined || value === null || value === "";
+
+const createSession = (user) => {
+    const { token } = signAccessToken(user);
+
+    return {
+        token,
+        user: publicUser(user)
+    };
+};
+
 module.exports = {
     login,
     refresh,
     logout,
-    profile
+    profile,
+    register,
+    createSession
 };

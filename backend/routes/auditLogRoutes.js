@@ -2,11 +2,11 @@ const express = require("express");
 const router = express.Router();
 
 const authMiddleware = require("../../middleware/authMiddleware");
-const { requireAdmin } = require("../../utils/roles");
+const requireModule = require("../../middleware/requireModule");
 const controller = require("../../controllers/auditLogController");
 
 router.use(authMiddleware);
-router.use(requireAdmin);
+router.use(requireModule("Audit Logs", "can_view"));
 
 router.get("/", controller.getAuditLogs);
 

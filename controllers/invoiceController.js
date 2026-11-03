@@ -7,6 +7,32 @@ const { assertTransition, isAllowedStatus } = require("../utils/statusTransition
 const { parseListFilters } = require("../utils/queryFilters");
 const { writeAudit } = require("../utils/audit");
 
+const buildTaxes = (taxes, subtotal, taxAmount) => {
+    if (Array.isArray(taxes) && taxes.length) {
+        return taxes.map((tax) => ({
+            tax_type: tax.tax_type || "GST",
+            tax_rate: isValidAmount(tax.tax_rate) ? roundMoney(tax.tax_rate) : 0,
+            taxable_amount: isValidAmount(tax.taxable_amount)
+                ? roundMoney(tax.taxable_amount)
+                : subtotal,
+            tax_amount: isValidAmount(tax.tax_amount)
+                ? roundMoney(tax.tax_amount)
+                : 0
+        }));
+    }
+
+    if (taxAmount <= 0) {
+        return [];
+    }
+
+    return [{
+        tax_type: "GST",
+        tax_rate: subtotal > 0 ? roundMoney((taxAmount / subtotal) * 100) : 0,
+        taxable_amount: subtotal,
+        tax_amount: taxAmount
+    }];
+};
+
 const buildLineItem = async (item, companyId) => {
     await assertOwned("trips", item.trip_id, companyId, "Trip");
     await assertOwned("bilties", item.bilty_id, companyId, "Bilty");
@@ -81,6 +107,7 @@ const createInvoice = async (req, res) => {
             : 0;
         const totalAmount = roundMoney(subtotal + taxAmount);
         const balanceAmount = roundMoney(totalAmount - deductionAmount);
+        const taxes = buildTaxes(req.body.taxes, subtotal, taxAmount);
 
         const invoiceId = await invoiceModel.createInvoice({
             company_id: companyId,
@@ -94,7 +121,8 @@ const createInvoice = async (req, res) => {
             total_amount: totalAmount,
             deduction_amount: deductionAmount,
             balance_amount: balanceAmount < 0 ? 0 : balanceAmount,
-            items: lineItems
+            items: lineItems,
+            taxes
         });
 
         await writeAudit(req, "INVOICE_CREATED", "invoice", invoiceId);
@@ -193,6 +221,7 @@ const updateInvoice = async (req, res) => {
             : 0;
         const totalAmount = roundMoney(subtotal + taxAmount);
         const balanceAmount = roundMoney(totalAmount - deductionAmount);
+        const taxes = buildTaxes(req.body.taxes, subtotal, taxAmount);
 
         const updated = await invoiceModel.updateInvoice(req.params.id, companyId, {
             client_id,
@@ -204,7 +233,8 @@ const updateInvoice = async (req, res) => {
             total_amount: totalAmount,
             deduction_amount: deductionAmount,
             balance_amount: balanceAmount < 0 ? 0 : balanceAmount,
-            items: lineItems
+            items: lineItems,
+            taxes
         });
 
         if (!updated) {
