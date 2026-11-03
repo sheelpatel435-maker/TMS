@@ -8,6 +8,7 @@ const {
 } = require("../utils/validation");
 const { assertOwned } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
+const { writeAudit } = require("../utils/audit");
 
 const createExpense = async (req, res) => {
     try {
@@ -41,6 +42,8 @@ const createExpense = async (req, res) => {
             receipt_url: receipt_url || null,
             remarks: remarks || null
         });
+
+        await writeAudit(req, "EXPENSE_CREATED", "trip_expense", expenseId);
 
         return res.status(201).json({
             success: true,
@@ -111,6 +114,8 @@ const updateStatus = async (req, res) => {
             status,
             approved_amount
         );
+
+        await writeAudit(req, "EXPENSE_STATUS_UPDATED", "trip_expense", req.params.id);
 
         return res.status(200).json({
             success: true,

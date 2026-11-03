@@ -5,6 +5,11 @@ const userModel = require("../models/userModel");
 const refreshTokenModel = require("../models/refreshTokenModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
 const { sendError, HttpError } = require("../utils/httpError");
+const {
+    assertNotLocked,
+    recordFailure,
+    clearFailures
+} = require("../utils/loginAttempts");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
 const REFRESH_TOKEN_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 7);
@@ -66,13 +71,17 @@ const login = async (req, res) => {
             throw new HttpError(400, "Email and password are required");
         }
 
+        assertNotLocked(req);
+
         const user = await userModel.findUserByEmail(email);
 
         if (!user) {
+            recordFailure(req);
             throw new HttpError(401, "Invalid email or password");
         }
 
         if (user.status !== 1) {
+            recordFailure(req);
             throw new HttpError(403, "User account is not active");
         }
 
@@ -82,9 +91,11 @@ const login = async (req, res) => {
         );
 
         if (!passwordMatch) {
+            recordFailure(req);
             throw new HttpError(401, "Invalid email or password");
         }
 
+        clearFailures(req);
         await userModel.updateLastLogin(user.id);
         user.last_login_at = new Date();
 

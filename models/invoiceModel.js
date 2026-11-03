@@ -15,6 +15,7 @@ const createInvoice = async (data) => {
                 client_id,
                 invoice_number,
                 invoice_date,
+                due_date,
                 taxable_amount,
                 subtotal,
                 tax_amount,
@@ -23,12 +24,13 @@ const createInvoice = async (data) => {
                 balance_amount,
                 status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
             [
                 data.company_id,
                 data.client_id,
                 data.invoice_number,
                 data.invoice_date,
+                data.due_date || null,
                 data.taxable_amount,
                 data.subtotal,
                 data.tax_amount,
@@ -84,12 +86,31 @@ const createInvoice = async (data) => {
     }
 };
 
-const getInvoices = async (companyId, pagination) => {
+const getInvoices = async (companyId, pagination, filters = {}) => {
+    const { where, params } = require("../utils/queryFilters").buildListWhere({
+        companyId,
+        filters,
+        searchColumns: ["invoice_number"],
+        dateColumn: "invoice_date"
+    });
+
+    if (filters.overdue) {
+        const overdueSql =
+            "due_date IS NOT NULL AND due_date < CURDATE() AND status IN ('SENT','PARTIAL')";
+        return paginatedSelect(db, {
+            table: "invoices",
+            columns: "*",
+            where: where ? `${where} AND ${overdueSql}` : overdueSql,
+            params,
+            pagination
+        });
+    }
+
     return paginatedSelect(db, {
         table: "invoices",
         columns: "*",
-        where: "company_id = ?",
-        params: [companyId],
+        where,
+        params,
         pagination
     });
 };
@@ -131,6 +152,93 @@ const findByNumber = async (companyId, invoiceNumber) => {
     );
 
     return rows[0] || null;
+};
+
+const updateInvoice = async (id, companyId, data) => {
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        const [result] = await connection.execute(
+            `UPDATE invoices
+             SET client_id = ?,
+                 invoice_date = ?,
+                 due_date = ?,
+                 taxable_amount = ?,
+                 subtotal = ?,
+                 tax_amount = ?,
+                 total_amount = ?,
+                 deduction_amount = ?,
+                 balance_amount = ?
+             WHERE id = ? AND company_id = ? AND status = 'DRAFT'`,
+            [
+                data.client_id,
+                data.invoice_date,
+                data.due_date || null,
+                data.taxable_amount,
+                data.subtotal,
+                data.tax_amount,
+                data.total_amount,
+                data.deduction_amount,
+                data.balance_amount,
+                id,
+                companyId
+            ]
+        );
+
+        if (!result.affectedRows) {
+            await connection.rollback();
+            return 0;
+        }
+
+        await connection.execute(
+            `DELETE FROM invoice_items
+             WHERE invoice_id = ? AND company_id = ?`,
+            [id, companyId]
+        );
+
+        if (Array.isArray(data.items)) {
+            for (const item of data.items) {
+                await connection.execute(
+                    `INSERT INTO invoice_items
+                    (
+                        company_id,
+                        invoice_id,
+                        trip_id,
+                        bilty_id,
+                        description,
+                        freight,
+                        detention,
+                        hamali,
+                        other_charges,
+                        item_total
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        companyId,
+                        id,
+                        item.trip_id || null,
+                        item.bilty_id || null,
+                        item.description || null,
+                        item.freight || 0,
+                        item.detention || 0,
+                        item.hamali || 0,
+                        item.other_charges || 0,
+                        item.item_total || 0
+                    ]
+                );
+            }
+        }
+
+        await connection.commit();
+        return 1;
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 };
 
 const updateStatus = async (id, companyId, status) => {
@@ -178,6 +286,7 @@ module.exports = {
     getInvoices,
     getInvoiceById,
     findByNumber,
+    updateInvoice,
     updateStatus,
     applyPaymentToBalance
 };

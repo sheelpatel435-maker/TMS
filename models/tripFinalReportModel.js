@@ -13,13 +13,14 @@ const createReport = async (data) => {
             final_odometer_start,
             final_odometer_end,
             total_distance_km,
+            loaded_quantity,
             loading_date,
             unloading_date,
             remarks,
             submitted_by,
             status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED')`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED')`,
         [
             data.company_id,
             data.trip_id,
@@ -27,6 +28,7 @@ const createReport = async (data) => {
             data.final_odometer_start,
             data.final_odometer_end,
             data.total_distance_km,
+            data.loaded_quantity || null,
             data.loading_date,
             data.unloading_date,
             data.remarks,

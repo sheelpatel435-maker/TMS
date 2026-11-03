@@ -3,12 +3,33 @@ const driverDocumentModel = require("../models/driverDocumentModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
+const { resolveCompanyId } = require("../utils/companyScope");
+const { writeAudit } = require("../utils/audit");
+
+const requireCompany = (req) => resolveCompanyId(req);
+
+const getDriverFilters = (query) => {
+    const filters = {};
+
+    if (query.search) {
+        filters.search = String(query.search).trim();
+    }
+
+    if (query.status !== undefined && query.status !== "") {
+        filters.status = query.status;
+    }
+
+    return filters;
+};
 
 const getDrivers = async (req, res) => {
     try {
+        const companyId = requireCompany(req);
+
         const { rows: drivers, pagination } = await driverModel.getDrivers(
-            req.user.company_id,
-            parsePagination(req.query)
+            companyId,
+            parsePagination(req.query),
+            getDriverFilters(req.query)
         );
 
         return res.status(200).json({
@@ -21,22 +42,39 @@ const getDrivers = async (req, res) => {
     }
 };
 
+const getDriverById = async (req, res) => {
+    try {
+        const companyId = requireCompany(req);
+        const driver = await driverModel.getDriverById(req.params.id, companyId);
+
+        if (!driver) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        return res.status(200).json({
+            success: true,
+            driver
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 const createDriver = async (req, res) => {
     try {
+        const companyId = requireCompany(req);
         const { name, mobile, license_number } = req.body;
 
         if (isMissing(name) || isMissing(mobile)) {
             throw new HttpError(400, "Name and mobile are required");
         }
 
-        const id = await driverModel.createDriver(
-            req.user.company_id,
-            req.body
-        );
+        const id = await driverModel.createDriver(companyId, req.body);
+        await writeAudit(req, "DRIVER_CREATED", "driver", id);
 
         if (!isMissing(license_number)) {
             await driverDocumentModel.createDriverDocument(
-                req.user.company_id,
+                companyId,
                 id,
                 {
                     document_type: "LICENSE",
@@ -56,7 +94,63 @@ const createDriver = async (req, res) => {
     }
 };
 
+const updateDriver = async (req, res) => {
+    try {
+        const companyId = requireCompany(req);
+        const { name, mobile } = req.body;
+
+        if (isMissing(name) || isMissing(mobile)) {
+            throw new HttpError(400, "Name and mobile are required");
+        }
+
+        const updated = await driverModel.updateDriver(
+            req.params.id,
+            companyId,
+            req.body
+        );
+
+        if (!updated) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        await writeAudit(req, "DRIVER_UPDATED", "driver", req.params.id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Driver updated successfully"
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const deactivateDriver = async (req, res) => {
+    try {
+        const companyId = requireCompany(req);
+        const updated = await driverModel.deactivateDriver(
+            req.params.id,
+            companyId
+        );
+
+        if (!updated) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        await writeAudit(req, "DRIVER_DEACTIVATED", "driver", req.params.id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Driver deactivated successfully"
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 module.exports = {
     getDrivers,
-    createDriver
+    getDriverById,
+    createDriver,
+    updateDriver,
+    deactivateDriver
 };

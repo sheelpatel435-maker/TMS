@@ -4,6 +4,7 @@ const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
 const { assertOwned } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
+const { writeAudit } = require("../utils/audit");
 
 const createReport = async (req, res) => {
     try {
@@ -34,8 +35,11 @@ const createReport = async (req, res) => {
             loading_date,
             unloading_date,
             remarks,
+            loaded_quantity: req.body.loaded_quantity,
             submitted_by: req.user.id
         });
+
+        await writeAudit(req, "FINAL_REPORT_CREATED", "trip_final_report", reportId);
 
         return res.status(201).json({
             success: true,
@@ -98,6 +102,8 @@ const updateStatus = async (req, res) => {
             status,
             req.user.id
         );
+
+        await writeAudit(req, "FINAL_REPORT_STATUS_UPDATED", "trip_final_report", req.params.id);
 
         return res.status(200).json({
             success: true,

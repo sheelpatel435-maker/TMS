@@ -4,6 +4,7 @@ const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing, requirePositiveAmount } = require("../utils/validation");
 const { assertOwned } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
+const { writeAudit } = require("../utils/audit");
 
 const createAdvance = async (req, res) => {
     try {
@@ -31,6 +32,8 @@ const createAdvance = async (req, res) => {
             payment_method: payment_method || null,
             reference_no: reference_no || null
         });
+
+        await writeAudit(req, "ADVANCE_CREATED", "trip_advance", advanceId);
 
         return res.status(201).json({
             success: true,
@@ -92,6 +95,8 @@ const updateStatus = async (req, res) => {
             req.user.company_id,
             status
         );
+
+        await writeAudit(req, "ADVANCE_STATUS_UPDATED", "trip_advance", req.params.id);
 
         return res.status(200).json({
             success: true,

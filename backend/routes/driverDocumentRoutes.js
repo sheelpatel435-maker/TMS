@@ -6,16 +6,26 @@ const authMiddleware = require("../../middleware/authMiddleware");
 const requireModule = require("../../middleware/requireModule");
 const { upload } = require("../../middleware/upload");
 
+router.use(authMiddleware);
+
+router.put(
+    "/:id",
+    requireModule("Drivers", "can_update"),
+    upload.single("file"),
+    controller.updateDriverDocument
+);
+router.delete(
+    "/:id",
+    requireModule("Drivers", "can_delete"),
+    controller.deactivateDriverDocument
+);
 router.get(
     "/:driverId",
-    authMiddleware,
     requireModule("Drivers", "can_view"),
     controller.getDriverDocuments
 );
-
 router.post(
     "/:driverId",
-    authMiddleware,
     requireModule("Drivers", "can_create"),
     upload.single("file"),
     controller.createDriverDocument

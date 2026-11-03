@@ -10,6 +10,7 @@ const {
 } = require("../utils/validation");
 const { assertOwned } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
+const { writeAudit } = require("../utils/audit");
 
 const createPayment = async (req, res) => {
     try {
@@ -132,6 +133,13 @@ const updateStatus = async (req, res) => {
             req.params.id,
             req.user.company_id,
             status
+        );
+
+        await writeAudit(
+            req,
+            status === "CONFIRMED" ? "PAYMENT_CONFIRMED" : "PAYMENT_STATUS_UPDATED",
+            "invoice_payment",
+            req.params.id
         );
 
         return res.status(200).json({

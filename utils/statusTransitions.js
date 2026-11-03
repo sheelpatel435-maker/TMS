@@ -34,6 +34,14 @@ const TRANSITIONS = {
         SUBMITTED: ["VERIFIED", "REJECTED"],
         VERIFIED: [],
         REJECTED: []
+    },
+    trip: {
+        CREATED: ["DISPATCHED", "CANCELLED"],
+        DISPATCHED: ["IN_TRANSIT", "CANCELLED"],
+        IN_TRANSIT: ["DELIVERED", "CANCELLED"],
+        DELIVERED: ["COMPLETED", "CANCELLED"],
+        COMPLETED: [],
+        CANCELLED: []
     }
 };
 

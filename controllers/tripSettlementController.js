@@ -4,6 +4,7 @@ const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
 const { assertOwned } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
+const { writeAudit } = require("../utils/audit");
 
 const createSettlement = async (req, res) => {
     try {
@@ -26,6 +27,8 @@ const createSettlement = async (req, res) => {
             settlement_type,
             remarks: remarks || settlement_no || null
         });
+
+        await writeAudit(req, "SETTLEMENT_CREATED", "trip_settlement", settlementId);
 
         return res.status(201).json({
             success: true,
@@ -97,6 +100,8 @@ const updateStatus = async (req, res) => {
             req.user.company_id,
             mapped
         );
+
+        await writeAudit(req, "SETTLEMENT_STATUS_UPDATED", "trip_settlement", req.params.id);
 
         return res.status(200).json({
             success: true,

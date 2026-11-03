@@ -42,6 +42,54 @@ const ensureSchema = async () => {
         "INT NOT NULL DEFAULT 1"
     );
 
+    await addColumnIfMissing(
+        "invoices",
+        "due_date",
+        "DATE NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "trip_final_reports",
+        "loaded_quantity",
+        "DECIMAL(12,2) NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "bilties",
+        "goods_description",
+        "VARCHAR(255) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "bilties",
+        "weight_kg",
+        "DECIMAL(12,2) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "bilties",
+        "packages",
+        "INT NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "bilties",
+        "consignor",
+        "VARCHAR(150) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "bilties",
+        "consignee",
+        "VARCHAR(150) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "bilties",
+        "pickup_location",
+        "VARCHAR(150) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "bilties",
+        "drop_location",
+        "VARCHAR(150) NULL DEFAULT NULL"
+    );
+
     await db.query(`
         CREATE TABLE IF NOT EXISTS revoked_tokens (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -80,6 +128,7 @@ const ensureSchema = async () => {
                 final_odometer_start DECIMAL(12,2) NULL,
                 final_odometer_end DECIMAL(12,2) NULL,
                 total_distance_km DECIMAL(12,2) NULL,
+                loaded_quantity DECIMAL(12,2) NULL,
                 loading_date DATETIME NULL,
                 unloading_date DATETIME NULL,
                 remarks VARCHAR(500) NULL,
@@ -93,6 +142,43 @@ const ensureSchema = async () => {
                 UNIQUE KEY uq_company_report_no (company_id, report_no),
                 KEY idx_final_report_company (company_id),
                 KEY idx_final_report_trip (trip_id)
+            )
+        `);
+    }
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS trip_stops (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            trip_id BIGINT UNSIGNED NOT NULL,
+            sequence INT NOT NULL,
+            city VARCHAR(150) NOT NULL,
+            address VARCHAR(255) NULL,
+            eta DATETIME NULL,
+            status ENUM('PENDING','ARRIVED') NOT NULL DEFAULT 'PENDING',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_trip_stops_trip (trip_id),
+            KEY idx_trip_stops_company (company_id)
+        )
+    `);
+
+    if (!(await tableExists("audit_logs"))) {
+        await db.query(`
+            CREATE TABLE audit_logs (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                company_id BIGINT UNSIGNED NULL,
+                user_id BIGINT UNSIGNED NULL,
+                action VARCHAR(100) NOT NULL,
+                entity_type VARCHAR(100) NULL,
+                entity_id BIGINT UNSIGNED NULL,
+                description VARCHAR(500) NULL,
+                ip_address VARCHAR(45) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_audit_company (company_id),
+                KEY idx_audit_user (user_id)
             )
         `);
     }

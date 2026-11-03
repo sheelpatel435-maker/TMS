@@ -10,6 +10,8 @@ router.use(authMiddleware);
 router.get("/", requireModule("Vehicles", "can_view"), controller.getVehicleAssignments);
 router.post("/", requireModule("Vehicles", "can_create"), controller.createVehicleAssignment);
 router.get("/:id", requireModule("Vehicles", "can_view"), controller.getAssignmentById);
+router.put("/:id", requireModule("Vehicles", "can_update"), controller.updateVehicleAssignment);
+router.delete("/:id", requireModule("Vehicles", "can_delete"), controller.deactivateVehicleAssignment);
 router.patch("/:id/close", requireModule("Vehicles", "can_update"), controller.closeVehicleAssignment);
 
 module.exports = router;

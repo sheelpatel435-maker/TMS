@@ -11,6 +11,8 @@ router.post("/", requireModule("Invoices", "can_create"), controller.createInvoi
 router.get("/", requireModule("Invoices", "can_view"), controller.getInvoices);
 router.get("/:id/print", requireModule("Invoices", "can_view"), controller.printInvoice);
 router.get("/:id", requireModule("Invoices", "can_view"), controller.getInvoiceById);
+router.put("/:id", requireModule("Invoices", "can_update"), controller.updateInvoice);
+router.delete("/:id", requireModule("Invoices", "can_delete"), controller.deactivateInvoice);
 router.patch("/:id/status", requireModule("Invoices", "can_approve"), controller.updateStatus);
 
 module.exports = router;

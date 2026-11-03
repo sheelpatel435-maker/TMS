@@ -15,6 +15,17 @@ router.post(
     upload.single("file"),
     controller.createVehicleDocument
 );
+router.put(
+    "/:id",
+    requireModule("Vehicles", "can_update"),
+    upload.single("file"),
+    controller.updateVehicleDocument
+);
+router.delete(
+    "/:id",
+    requireModule("Vehicles", "can_delete"),
+    controller.deactivateVehicleDocument
+);
 router.get("/:vehicleId", requireModule("Vehicles", "can_view"), controller.getVehicleDocuments);
 router.post(
     "/:vehicleId",

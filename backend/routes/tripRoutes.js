@@ -19,5 +19,7 @@ router.patch(
     controller.updateTripStatus
 );
 router.get("/:id", requireModule("Trips", "can_view"), controller.getTripById);
+router.put("/:id", requireModule("Trips", "can_update"), controller.updateTrip);
+router.delete("/:id", requireModule("Trips", "can_delete"), controller.deactivateTrip);
 
 module.exports = router;

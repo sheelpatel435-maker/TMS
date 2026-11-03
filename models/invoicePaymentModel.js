@@ -135,6 +135,10 @@ const updateStatus = async (id, companyId, status) => {
             throw new HttpError(400, "Invoice not found for this company");
         }
 
+        if (invoice.status === "CANCELLED" && nextStatus === "CONFIRMED") {
+            throw new HttpError(400, "Payments cannot be confirmed on a cancelled invoice");
+        }
+
         await connection.execute(
             `UPDATE invoice_payments
              SET status = ?

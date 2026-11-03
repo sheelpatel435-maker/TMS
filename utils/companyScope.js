@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const { HttpError } = require("./httpError");
+const { isSuperAdmin } = require("./roles");
 
 const TABLES = {
     vehicles: "vehicles",
@@ -88,9 +89,22 @@ const assertOwnedUser = async (userId, companyId, { allowSuperAdmin = false } = 
     return user;
 };
 
+const resolveCompanyId = (req) => {
+    if (isSuperAdmin(req.user) && req.query?.company_id) {
+        return Number(req.query.company_id);
+    }
+
+    if (!req.user?.company_id) {
+        throw new HttpError(400, "User is not assigned to a company");
+    }
+
+    return req.user.company_id;
+};
+
 module.exports = {
     TABLES,
     getById,
     assertOwned,
-    assertOwnedUser
+    assertOwnedUser,
+    resolveCompanyId
 };

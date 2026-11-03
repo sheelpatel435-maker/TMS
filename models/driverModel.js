@@ -2,14 +2,42 @@ const db = require("../config/db");
 const { paginatedSelect } = require("../utils/pagination");
 const { toTinyIntStatus } = require("../utils/validation");
 
-const getDrivers = async (companyId, pagination) => {
+const DRIVER_COLUMNS = `id, company_id, name, mobile, email, address, status, created_at, updated_at`;
+
+const getDrivers = async (companyId, pagination, filters = {}) => {
+    const where = ["company_id = ?"];
+    const params = [companyId];
+
+    if (filters.status !== undefined && filters.status !== "") {
+        where.push("status = ?");
+        params.push(toTinyIntStatus(filters.status, 1));
+    }
+
+    if (filters.search) {
+        where.push("(name LIKE ? OR mobile LIKE ?)");
+        const term = `%${filters.search}%`;
+        params.push(term, term);
+    }
+
     return paginatedSelect(db, {
         table: "drivers",
-        columns: `id, company_id, name, mobile, email, address, status, created_at, updated_at`,
-        where: "company_id = ?",
-        params: [companyId],
+        columns: DRIVER_COLUMNS,
+        where: where.join(" AND "),
+        params,
         pagination
     });
+};
+
+const getDriverById = async (id, companyId) => {
+    const [rows] = await db.execute(
+        `SELECT ${DRIVER_COLUMNS}
+         FROM drivers
+         WHERE id = ? AND company_id = ?
+         LIMIT 1`,
+        [id, companyId]
+    );
+
+    return rows[0] || null;
 };
 
 const createDriver = async (companyId, data) => {
@@ -30,7 +58,44 @@ const createDriver = async (companyId, data) => {
     return result.insertId;
 };
 
+const updateDriver = async (id, companyId, data) => {
+    const [result] = await db.execute(
+        `UPDATE drivers
+         SET name = ?,
+             mobile = ?,
+             email = ?,
+             address = ?,
+             status = ?
+         WHERE id = ? AND company_id = ?`,
+        [
+            data.name,
+            data.mobile,
+            data.email || null,
+            data.address || null,
+            toTinyIntStatus(data.status, 1),
+            id,
+            companyId
+        ]
+    );
+
+    return result.affectedRows;
+};
+
+const deactivateDriver = async (id, companyId) => {
+    const [result] = await db.execute(
+        `UPDATE drivers
+         SET status = 0
+         WHERE id = ? AND company_id = ?`,
+        [id, companyId]
+    );
+
+    return result.affectedRows;
+};
+
 module.exports = {
     getDrivers,
-    createDriver
+    getDriverById,
+    createDriver,
+    updateDriver,
+    deactivateDriver
 };
