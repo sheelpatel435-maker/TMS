@@ -8,6 +8,13 @@ const { upload } = require("../../middleware/upload");
 
 router.use(authMiddleware);
 
+router.get("/", requireModule("Drivers", "can_view"), controller.getDriverDocuments);
+router.post(
+    "/",
+    requireModule("Drivers", "can_create"),
+    upload.single("file"),
+    controller.createDriverDocument
+);
 router.put(
     "/:id",
     requireModule("Drivers", "can_update"),

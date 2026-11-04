@@ -214,6 +214,39 @@ const spec = {
                 ]
             })
         },
+        "/api/users": {
+            get: secured("Access", "List company users. Admin only.", {
+                parameters: listParams
+            }),
+            post: secured("Access", "Create a user (admin signup).", {
+                requestBody: jsonBody(
+                    {
+                        name: "Office Admin",
+                        mobile: "9876543210",
+                        email: "office@tms.com",
+                        password: "secret1",
+                        user_type: "COMPANY_ADMIN",
+                        company_id: 1
+                    },
+                    ["name", "mobile", "password"]
+                ),
+                responses: created
+            })
+        },
+        "/api/users/{id}": {
+            get: secured("Access", "Get one user", { parameters: [idParam] }),
+            put: secured("Access", "Update a user", {
+                parameters: [idParam],
+                requestBody: jsonBody({
+                    name: "Office Admin",
+                    mobile: "9876543210",
+                    email: "office@tms.com",
+                    user_type: "COMPANY_USER",
+                    status: 1
+                })
+            }),
+            delete: secured("Access", "Deactivate a user", { parameters: [idParam] })
+        },
         "/api/user-module-access": {
             get: secured("Access", "List module flags", { parameters: listParams }),
             post: secured("Access", "Grant module flags. Admin only.", {

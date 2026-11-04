@@ -8,6 +8,13 @@ const { upload } = require("../../middleware/upload");
 
 router.use(authMiddleware);
 
+router.get("/", requireModule("Helpers", "can_view"), controller.getHelperDocuments);
+router.post(
+    "/",
+    requireModule("Helpers", "can_create"),
+    upload.single("file"),
+    controller.createHelperDocument
+);
 router.put(
     "/:id",
     requireModule("Helpers", "can_update"),
