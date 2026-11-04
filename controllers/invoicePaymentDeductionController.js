@@ -2,7 +2,7 @@ const invoicePaymentDeductionModel = require("../models/invoicePaymentDeductionM
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing, requirePositiveAmount } = require("../utils/validation");
-const { assertOwned } = require("../utils/companyScope");
+const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 
 const createDeduction = async (req, res) => {
     try {
@@ -24,17 +24,18 @@ const createDeduction = async (req, res) => {
             throw new HttpError(400, "deduction_type must be TDS or OTHER");
         }
 
+        const companyId = resolveCompanyId(req);
         const parsedAmount = requirePositiveAmount(amount, "amount");
 
         await assertOwned(
             "invoice_payments",
             invoice_payment_id,
-            req.user.company_id,
+            companyId,
             "Invoice payment"
         );
 
         const deductionId = await invoicePaymentDeductionModel.createDeduction({
-            company_id: req.user.company_id,
+            company_id: companyId,
             invoice_payment_id,
             deduction_type,
             amount: parsedAmount,
@@ -55,7 +56,7 @@ const getDeductions = async (req, res) => {
     try {
         const { rows: deductions, pagination } =
             await invoicePaymentDeductionModel.getDeductions(
-                req.user.company_id,
+                resolveCompanyId(req),
                 parsePagination(req.query)
             );
 
@@ -73,7 +74,7 @@ const getDeductionById = async (req, res) => {
     try {
         const deduction = await invoicePaymentDeductionModel.getDeductionById(
             req.params.id,
-            req.user.company_id
+            resolveCompanyId(req)
         );
 
         if (!deduction) {

@@ -2,27 +2,25 @@ const tripSettlementModel = require("../models/tripSettlementModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
-const { assertOwned } = require("../utils/companyScope");
+const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
 
 const createSettlement = async (req, res) => {
     try {
         const { trip_id, settlement_type, remarks, settlement_no } = req.body;
+        const companyId = resolveCompanyId(req);
 
         if (isMissing(trip_id)) {
             throw new HttpError(400, "trip_id is required");
         }
 
-        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
+        await assertOwned("trips", trip_id, companyId, "Trip");
 
-        const totals = await tripSettlementModel.computeTotals(
-            req.user.company_id,
-            trip_id
-        );
+        const totals = await tripSettlementModel.computeTotals(companyId, trip_id);
 
         const settlementId = await tripSettlementModel.createSettlement({
-            company_id: req.user.company_id,
+            company_id: companyId,
             trip_id,
             settlement_type,
             remarks: remarks || settlement_no || null
@@ -45,7 +43,7 @@ const getSettlements = async (req, res) => {
     try {
         const { rows: settlements, pagination } =
             await tripSettlementModel.getSettlements(
-                req.user.company_id,
+                resolveCompanyId(req),
                 parsePagination(req.query)
             );
 
@@ -63,7 +61,7 @@ const getSettlementById = async (req, res) => {
     try {
         const settlement = await tripSettlementModel.getSettlementById(
             req.params.id,
-            req.user.company_id
+            resolveCompanyId(req)
         );
 
         if (!settlement) {
@@ -97,7 +95,7 @@ const updateStatus = async (req, res) => {
 
         await tripSettlementModel.updateStatus(
             req.params.id,
-            req.user.company_id,
+            resolveCompanyId(req),
             mapped
         );
 

@@ -3,6 +3,8 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const db = require("../config/db");
 const { ensureSchema } = require("../config/schema");
 const moduleRoutes = require("./routes/moduleRoutes");
 const userModuleAccessRoutes = require("./routes/userModuleAccessRoutes");
@@ -32,9 +34,10 @@ const auditLogRoutes = require("./routes/auditLogRoutes");
 const documentExpiryRoutes = require("./routes/documentExpiryRoutes");
 const authController = require("../controllers/authController");
 const dashboardController = require("../controllers/dashboardController");
+const fileController = require("../controllers/fileController");
 const authMiddleware = require("../middleware/authMiddleware");
 const accessLog = require("../middleware/accessLog");
-const { uploadDir } = require("../middleware/upload");
+const { requireAdmin } = require("../utils/roles");
 const swaggerUi = require("swagger-ui-express");
 const openapi = require("./openapi");
 
@@ -56,32 +59,11 @@ const corsOrigins = Array.from(
 );
 
 app.use(
-    cors({
-        origin: corsOrigins,
-        credentials: true
+    helmet({
+        contentSecurityPolicy: false,
+        crossOriginResourcePolicy: { policy: "cross-origin" }
     })
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(accessLog);
-app.use("/uploads", express.static(uploadDir));
-const swaggerSpec = (req) => {
-    const proto = req.headers["x-forwarded-proto"] || req.protocol;
-    return {
-        ...openapi,
-        servers: [{ url: `${proto}://${req.get("host")}`, description: "This server" }]
-    };
-};
-
-app.get("/api-docs.json", (req, res) => {
-    res.json(swaggerSpec(req));
-});
-app.use("/api-docs", swaggerUi.serve, (req, res, next) => {
-    swaggerUi.setup(swaggerSpec(req), {
-        customSiteTitle: "TMS API",
-        swaggerOptions: { persistAuthorization: true }
-    })(req, res, next);
-});
 
 app.use((req, res, next) => {
     if (process.env.NODE_ENV !== "production") {
@@ -100,6 +82,60 @@ app.use((req, res, next) => {
     });
 });
 
+app.use(
+    cors({
+        origin: corsOrigins,
+        credentials: true
+    })
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use(accessLog);
+
+const swaggerSpec = (req) => {
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    return {
+        ...openapi,
+        servers: [{ url: `${proto}://${req.get("host")}`, description: "This server" }]
+    };
+};
+
+app.get("/api-docs.json", (req, res) => {
+    res.json(swaggerSpec(req));
+});
+app.use("/api-docs", swaggerUi.serve, (req, res, next) => {
+    swaggerUi.setup(swaggerSpec(req), {
+        customSiteTitle: "TMS API",
+        swaggerOptions: { persistAuthorization: true }
+    })(req, res, next);
+});
+
+app.get("/api/health", async (_req, res) => {
+    try {
+        await db.query("SELECT 1");
+        return res.status(200).json({
+            success: true,
+            message: "TMS API healthy",
+            db: true
+        });
+    } catch (error) {
+        return res.status(503).json({
+            success: false,
+            message: "Database unavailable",
+            db: false
+        });
+    }
+});
+
+app.get("/api", (_req, res) => {
+    res.status(200).json({
+        success: true,
+        message: "TMS API is working"
+    });
+});
+
+app.get("/api/files/:filename", authMiddleware, fileController.downloadFile);
+
 app.use("/api/modules", moduleRoutes);
 app.use("/api/user-module-access", userModuleAccessRoutes);
 app.use("/api/vehicle-types", vehicleTypeRoutes);
@@ -114,7 +150,7 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/users", userRoutes);
-app.post("/api/register", authController.register);
+app.post("/api/register", authMiddleware, requireAdmin, authController.register);
 app.post("/api/login", authController.login);
 app.post("/api/refresh", authController.refresh);
 app.post("/api/logout", authMiddleware, authController.logout);
@@ -135,17 +171,9 @@ app.use("/api/documents", documentExpiryRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/api", (req, res) => {
-    res.status(200).json({
-        success: true,
-        message: "TMS API is working"
-    });
-});
-
 app.get("/{*path}", (req, res, next) => {
     if (
         req.path.startsWith("/api") ||
-        req.path.startsWith("/uploads") ||
         req.path.startsWith("/api-docs")
     ) {
         return next();
@@ -156,6 +184,14 @@ app.get("/{*path}", (req, res, next) => {
     }
 
     return res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.use((error, _req, res, _next) => {
+    const status = error.status || error.statusCode || 500;
+    return res.status(status).json({
+        success: false,
+        message: error.message || "Request failed"
+    });
 });
 
 const PORT = process.env.PORT || 5000;

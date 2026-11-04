@@ -6,7 +6,7 @@ const {
     requirePositiveAmount,
     isValidAmount
 } = require("../utils/validation");
-const { assertOwned } = require("../utils/companyScope");
+const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
 
@@ -27,15 +27,16 @@ const createExpense = async (req, res) => {
             );
         }
 
+        const companyId = resolveCompanyId(req);
         const parsedAmount = requirePositiveAmount(
             requested_amount,
             "requested_amount"
         );
 
-        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
+        await assertOwned("trips", trip_id, companyId, "Trip");
 
         const expenseId = await tripExpenseModel.createExpense({
-            company_id: req.user.company_id,
+            company_id: companyId,
             trip_id,
             expense_type,
             requested_amount: parsedAmount,
@@ -58,7 +59,7 @@ const createExpense = async (req, res) => {
 const getExpenses = async (req, res) => {
     try {
         const { rows: expenses, pagination } = await tripExpenseModel.getExpenses(
-            req.user.company_id,
+            resolveCompanyId(req),
             parsePagination(req.query)
         );
 
@@ -76,7 +77,7 @@ const getExpenseById = async (req, res) => {
     try {
         const expense = await tripExpenseModel.getExpenseById(
             req.params.id,
-            req.user.company_id
+            resolveCompanyId(req)
         );
 
         if (!expense) {
@@ -110,7 +111,7 @@ const updateStatus = async (req, res) => {
 
         await tripExpenseModel.updateStatus(
             req.params.id,
-            req.user.company_id,
+            resolveCompanyId(req),
             status,
             approved_amount
         );

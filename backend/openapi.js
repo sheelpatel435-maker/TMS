@@ -123,16 +123,17 @@ const spec = {
         "/api/register": {
             post: {
                 tags: ["Auth"],
-                summary: "Register a company user",
+                summary: "Admin-only: create a company user (prefer POST /api/users)",
+                security: [{ bearerAuth: [] }],
                 requestBody: jsonBody(
                     {
                         name: "Amit Kumar",
                         mobile: "9876543210",
                         email: "amit@example.com",
-                        password: "secret1",
+                        password: "Secret1a",
                         company_id: 1
                     },
-                    ["name", "mobile", "password", "company_id"]
+                    ["name", "mobile", "password"]
                 ),
                 responses: created
             }
@@ -177,12 +178,8 @@ const spec = {
             get: secured("Reports", "Dashboard counts, including documents expiring in 30 days")
         },
         "/api/companies": {
-            get: {
-                tags: ["Companies"],
-                summary: "List companies. Public call returns active companies for registration.",
-                responses: ok
-            },
-            post: secured("Companies", "Create a company. Super admin, or a user with no company.", {
+            get: secured("Companies", "List companies for the current user. Super admin sees all."),
+            post: secured("Companies", "Create a company. Super admin only.", {
                 requestBody: jsonBody({ name: "TMS Demo Company" }, ["name"]),
                 responses: created
             })

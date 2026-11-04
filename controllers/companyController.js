@@ -1,20 +1,9 @@
 const companyModel = require("../models/companyModel");
-const userModel = require("../models/userModel");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isSuperAdmin } = require("../utils/roles");
-const { createSession } = require("./authController");
 
 const listCompanies = async (req, res) => {
     try {
-        if (!req.user) {
-            const companies = await companyModel.listActive();
-
-            return res.status(200).json({
-                success: true,
-                companies
-            });
-        }
-
         if (isSuperAdmin(req.user)) {
             const companies = await companyModel.listAll();
 
@@ -68,14 +57,12 @@ const getCompany = async (req, res) => {
 
 const createCompany = async (req, res) => {
     try {
+        assertSuperAdmin(req);
+
         const name = String(req.body.name || "").trim();
 
         if (!name) {
             throw new HttpError(400, "Company name is required");
-        }
-
-        if (!isSuperAdmin(req.user) && req.user.company_id) {
-            throw new HttpError(403, "You are already assigned to a company");
         }
 
         const existing = await companyModel.findByName(name);
@@ -86,19 +73,12 @@ const createCompany = async (req, res) => {
 
         const companyId = await companyModel.createCompany(name);
         const company = await companyModel.getById(companyId);
-        const payload = {
+
+        return res.status(201).json({
             success: true,
             message: "Company created successfully",
             company
-        };
-
-        if (!isSuperAdmin(req.user)) {
-            await userModel.assignCompanyAdmin(req.user.id, companyId);
-            const user = await userModel.findUserById(req.user.id);
-            Object.assign(payload, createSession(user));
-        }
-
-        return res.status(201).json(payload);
+        });
     } catch (error) {
         return sendError(res, error);
     }

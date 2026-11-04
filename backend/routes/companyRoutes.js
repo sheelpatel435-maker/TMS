@@ -4,18 +4,12 @@ const router = express.Router();
 const authMiddleware = require("../../middleware/authMiddleware");
 const controller = require("../../controllers/companyController");
 
-const optionalAuth = (req, res, next) => {
-    if (!req.headers.authorization) {
-        return next();
-    }
+router.use(authMiddleware);
 
-    return authMiddleware(req, res, next);
-};
-
-router.get("/", optionalAuth, controller.listCompanies);
-router.get("/:id", authMiddleware, controller.getCompany);
-router.post("/", authMiddleware, controller.createCompany);
-router.put("/:id", authMiddleware, controller.updateCompany);
-router.delete("/:id", authMiddleware, controller.deactivateCompany);
+router.get("/", controller.listCompanies);
+router.get("/:id", controller.getCompany);
+router.post("/", controller.createCompany);
+router.put("/:id", controller.updateCompany);
+router.delete("/:id", controller.deactivateCompany);
 
 module.exports = router;

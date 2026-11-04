@@ -90,8 +90,17 @@ const assertOwnedUser = async (userId, companyId, { allowSuperAdmin = false } = 
 };
 
 const resolveCompanyId = (req) => {
-    if (isSuperAdmin(req.user) && req.query?.company_id) {
-        return Number(req.query.company_id);
+    if (isSuperAdmin(req.user)) {
+        const scoped =
+            req.query?.company_id ??
+            req.body?.company_id ??
+            req.user.company_id;
+
+        if (scoped === undefined || scoped === null || scoped === "") {
+            throw new HttpError(400, "company_id is required");
+        }
+
+        return Number(scoped);
     }
 
     if (!req.user?.company_id) {

@@ -11,6 +11,9 @@ const {
     recordFailure,
     clearFailures
 } = require("../utils/loginAttempts");
+const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
+const { isAdmin, isSuperAdmin } = require("../utils/roles");
+const { resolveCompanyId } = require("../utils/companyScope");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
 const REFRESH_TOKEN_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 7);
@@ -205,23 +208,22 @@ const profile = async (req, res) => {
 
 const register = async (req, res) => {
     try {
+        if (!isAdmin(req.user)) {
+            throw new HttpError(403, "Admin access is required to create users");
+        }
+
         const name = String(req.body.name || "").trim();
         const mobile = String(req.body.mobile || "").trim();
         const email = String(req.body.email || "").trim().toLowerCase();
-        const password = req.body.password;
-        const companyId = req.body.company_id;
+        const password = assertStrongPassword(req.body.password);
 
-        if (!name || !mobile || !password) {
-            throw new HttpError(400, "Name, mobile and password are required");
+        if (!name || !mobile) {
+            throw new HttpError(400, "Name and mobile are required");
         }
 
-        if (String(password).length < 6) {
-            throw new HttpError(400, "Password must be at least 6 characters");
-        }
-
-        if (isMissingCompany(companyId)) {
-            throw new HttpError(400, "company_id is required");
-        }
+        const companyId = isSuperAdmin(req.user)
+            ? resolveCompanyId(req)
+            : req.user.company_id;
 
         const company = await companyModel.getById(companyId);
 
@@ -237,7 +239,7 @@ const register = async (req, res) => {
             }
         }
 
-        const passwordHash = await bcrypt.hash(password, 10);
+        const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
         const userId = await userModel.createUser({
             company_id: company.id,
             user_type: "COMPANY_USER",
@@ -256,9 +258,6 @@ const register = async (req, res) => {
         return sendError(res, error);
     }
 };
-
-const isMissingCompany = (value) =>
-    value === undefined || value === null || value === "";
 
 const createSession = (user) => {
     const { token } = signAccessToken(user);

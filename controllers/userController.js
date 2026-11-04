@@ -6,6 +6,7 @@ const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
 const { isAdmin, isSuperAdmin } = require("../utils/roles");
 const { writeAudit } = require("../utils/audit");
+const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
 
 const ALLOWED_TYPES = [
     "SUPER_ADMIN",
@@ -142,9 +143,7 @@ const createUser = async (req, res) => {
             throw new HttpError(400, "Name, mobile and password are required");
         }
 
-        if (String(password).length < 6) {
-            throw new HttpError(400, "Password must be at least 6 characters");
-        }
+        assertStrongPassword(password);
 
         let companyId = req.body.company_id;
 
@@ -176,7 +175,7 @@ const createUser = async (req, res) => {
             }
         }
 
-        const passwordHash = await bcrypt.hash(password, 10);
+        const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
         const id = await userModel.createUser({
             company_id: companyId || null,
             user_type: userType,
@@ -243,11 +242,8 @@ const updateUser = async (req, res) => {
         let passwordHash = null;
 
         if (req.body.password) {
-            if (String(req.body.password).length < 6) {
-                throw new HttpError(400, "Password must be at least 6 characters");
-            }
-
-            passwordHash = await bcrypt.hash(req.body.password, 10);
+            assertStrongPassword(req.body.password);
+            passwordHash = await bcrypt.hash(req.body.password, BCRYPT_ROUNDS);
         }
 
         await userModel.updateUser(existing.id, {

@@ -2,7 +2,7 @@ const tripAdvanceModel = require("../models/tripAdvanceModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing, requirePositiveAmount } = require("../utils/validation");
-const { assertOwned } = require("../utils/companyScope");
+const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
 
@@ -20,12 +20,13 @@ const createAdvance = async (req, res) => {
             throw new HttpError(400, "trip_id and amount are required");
         }
 
+        const companyId = resolveCompanyId(req);
         const parsedAmount = requirePositiveAmount(amount, "amount");
 
-        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
+        await assertOwned("trips", trip_id, companyId, "Trip");
 
         const advanceId = await tripAdvanceModel.createAdvance({
-            company_id: req.user.company_id,
+            company_id: companyId,
             trip_id,
             amount: parsedAmount,
             payment_date: payment_date || null,
@@ -48,7 +49,7 @@ const createAdvance = async (req, res) => {
 const getAdvances = async (req, res) => {
     try {
         const { rows: advances, pagination } = await tripAdvanceModel.getAdvances(
-            req.user.company_id,
+            resolveCompanyId(req),
             parsePagination(req.query)
         );
 
@@ -66,7 +67,7 @@ const getAdvanceById = async (req, res) => {
     try {
         const advance = await tripAdvanceModel.getAdvanceById(
             req.params.id,
-            req.user.company_id
+            resolveCompanyId(req)
         );
 
         if (!advance) {
@@ -92,7 +93,7 @@ const updateStatus = async (req, res) => {
 
         await tripAdvanceModel.updateStatus(
             req.params.id,
-            req.user.company_id,
+            resolveCompanyId(req),
             status
         );
 

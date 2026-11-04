@@ -2,7 +2,7 @@ const tripFinalReportModel = require("../models/tripFinalReportModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
-const { assertOwned } = require("../utils/companyScope");
+const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
 
@@ -23,10 +23,11 @@ const createReport = async (req, res) => {
             throw new HttpError(400, "trip_id and report_no are required");
         }
 
-        await assertOwned("trips", trip_id, req.user.company_id, "Trip");
+        const companyId = resolveCompanyId(req);
+        await assertOwned("trips", trip_id, companyId, "Trip");
 
         const reportId = await tripFinalReportModel.createReport({
-            company_id: req.user.company_id,
+            company_id: companyId,
             trip_id,
             report_no,
             final_odometer_start,
@@ -54,7 +55,7 @@ const createReport = async (req, res) => {
 const getReports = async (req, res) => {
     try {
         const { rows: reports, pagination } = await tripFinalReportModel.getReports(
-            req.user.company_id,
+            resolveCompanyId(req),
             parsePagination(req.query)
         );
 
@@ -72,7 +73,7 @@ const getReportById = async (req, res) => {
     try {
         const report = await tripFinalReportModel.getReportById(
             req.params.id,
-            req.user.company_id
+            resolveCompanyId(req)
         );
 
         if (!report) {
@@ -98,7 +99,7 @@ const updateStatus = async (req, res) => {
 
         await tripFinalReportModel.updateStatus(
             req.params.id,
-            req.user.company_id,
+            resolveCompanyId(req),
             status,
             req.user.id
         );

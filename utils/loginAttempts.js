@@ -7,7 +7,20 @@ const attempts = new Map();
 const keyFor = (req) =>
     `${req.ip}:${String(req.body?.email || "").trim().toLowerCase()}`;
 
+const pruneExpired = () => {
+    const now = Date.now();
+
+    for (const [key, record] of attempts.entries()) {
+        if (now - record.start >= WINDOW_MS) {
+            attempts.delete(key);
+        }
+    }
+};
+
+setInterval(pruneExpired, WINDOW_MS).unref?.();
+
 const assertNotLocked = (req) => {
+    pruneExpired();
     const record = attempts.get(keyFor(req));
 
     if (

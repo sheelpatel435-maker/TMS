@@ -8,7 +8,7 @@ const {
     roundMoney,
     toNumber
 } = require("../utils/validation");
-const { assertOwned } = require("../utils/companyScope");
+const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
 
@@ -34,10 +34,11 @@ const createPayment = async (req, res) => {
             );
         }
 
+        const companyId = resolveCompanyId(req);
         const invoice = await assertOwned(
             "invoices",
             invoice_id,
-            req.user.company_id,
+            companyId,
             "Invoice"
         );
 
@@ -59,7 +60,7 @@ const createPayment = async (req, res) => {
             : roundMoney(toNumber(gross) - deduction);
 
         const paymentId = await invoicePaymentModel.createPayment({
-            company_id: req.user.company_id,
+            company_id: companyId,
             invoice_id,
             payment_date,
             gross_amount: roundMoney(gross),
@@ -83,7 +84,7 @@ const getPayments = async (req, res) => {
     try {
         const { rows: payments, pagination } =
             await invoicePaymentModel.getPayments(
-                req.user.company_id,
+                resolveCompanyId(req),
                 parsePagination(req.query)
             );
 
@@ -101,7 +102,7 @@ const getPaymentById = async (req, res) => {
     try {
         const payment = await invoicePaymentModel.getPaymentById(
             req.params.id,
-            req.user.company_id
+            resolveCompanyId(req)
         );
 
         if (!payment) {
@@ -131,7 +132,7 @@ const updateStatus = async (req, res) => {
 
         await invoicePaymentModel.updateStatus(
             req.params.id,
-            req.user.company_id,
+            resolveCompanyId(req),
             status
         );
 
