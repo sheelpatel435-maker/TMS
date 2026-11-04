@@ -34,6 +34,8 @@ const dashboardController = require("../controllers/dashboardController");
 const authMiddleware = require("../middleware/authMiddleware");
 const accessLog = require("../middleware/accessLog");
 const { uploadDir } = require("../middleware/upload");
+const swaggerUi = require("swagger-ui-express");
+const openapi = require("./openapi");
 
 const app = express();
 
@@ -54,6 +56,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(accessLog);
 app.use("/uploads", express.static(uploadDir));
+const swaggerSpec = (req) => {
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    return {
+        ...openapi,
+        servers: [{ url: `${proto}://${req.get("host")}`, description: "This server" }]
+    };
+};
+
+app.get("/api-docs.json", (req, res) => {
+    res.json(swaggerSpec(req));
+});
+app.use("/api-docs", swaggerUi.serve, (req, res, next) => {
+    swaggerUi.setup(swaggerSpec(req), {
+        customSiteTitle: "TMS API",
+        swaggerOptions: { persistAuthorization: true }
+    })(req, res, next);
+});
 
 app.use((req, res, next) => {
     if (process.env.NODE_ENV !== "production") {
@@ -124,6 +143,7 @@ const start = async () => {
 
     app.listen(PORT, () => {
         console.log(`TMS Server running on http://localhost:${PORT}`);
+        console.log(`Swagger docs on http://localhost:${PORT}/api-docs`);
     });
 };
 
