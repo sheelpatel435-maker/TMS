@@ -169,6 +169,7 @@ const spec = {
             get: secured("Auth", "Current user profile")
         },
         "/api/auth/login": { post: { $ref: "#/paths/~1api~1login/post" } },
+        "/api/auth/register": { post: { $ref: "#/paths/~1api~1register/post" } },
         "/api/auth/refresh": { post: { $ref: "#/paths/~1api~1refresh/post" } },
         "/api/auth/logout": { post: { $ref: "#/paths/~1api~1logout/post" } },
         "/api/auth/profile": { get: { $ref: "#/paths/~1api~1profile/get" } },
@@ -245,6 +246,7 @@ const spec = {
                     status: 1
                 })
             }),
+            patch: { $ref: "#/paths/~1api~1users~1{id}/put" },
             delete: secured("Access", "Deactivate a user", { parameters: [idParam] })
         },
         "/api/user-module-access": {

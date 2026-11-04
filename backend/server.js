@@ -42,7 +42,10 @@ const app = express();
 
 app.set("trust proxy", 1);
 
-const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:5000")
+const corsOrigins = (
+    process.env.CORS_ORIGIN ||
+    "http://localhost:5000,http://localhost:5173,https://tms-ui-pi.vercel.app"
+)
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -132,6 +135,22 @@ app.get("/api", (req, res) => {
         success: true,
         message: "TMS API is working"
     });
+});
+
+app.get("/{*path}", (req, res, next) => {
+    if (
+        req.path.startsWith("/api") ||
+        req.path.startsWith("/uploads") ||
+        req.path.startsWith("/api-docs")
+    ) {
+        return next();
+    }
+
+    if (path.extname(req.path)) {
+        return next();
+    }
+
+    return res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 const PORT = process.env.PORT || 5000;
