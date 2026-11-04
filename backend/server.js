@@ -42,13 +42,18 @@ const app = express();
 
 app.set("trust proxy", 1);
 
-const corsOrigins = (
-    process.env.CORS_ORIGIN ||
-    "http://localhost:5000,http://localhost:5173,https://tms-ui-pi.vercel.app"
-)
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+const corsOrigins = Array.from(
+    new Set(
+        [
+            ...(process.env.CORS_ORIGIN || "").split(","),
+            "http://localhost:5000",
+            "http://localhost:5173",
+            "https://tms-ui-pi.vercel.app"
+        ]
+            .map((origin) => origin.trim())
+            .filter(Boolean)
+    )
+);
 
 app.use(
     cors({
