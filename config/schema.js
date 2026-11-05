@@ -43,6 +43,30 @@ const ensureSchema = async () => {
     );
 
     await addColumnIfMissing(
+        "users",
+        "otp_hash",
+        "VARCHAR(255) NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "users",
+        "otp_expires_at",
+        "DATETIME NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "users",
+        "otp_attempts",
+        "INT NOT NULL DEFAULT 0"
+    );
+
+    await addColumnIfMissing(
+        "users",
+        "password_changed_at",
+        "TIMESTAMP NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
         "invoices",
         "due_date",
         "DATE NULL DEFAULT NULL"

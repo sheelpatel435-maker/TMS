@@ -12,6 +12,7 @@ const {
     clearFailures
 } = require("../utils/loginAttempts");
 const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
+const { sendPasswordOtp } = require("../utils/mailer");
 const { isAdmin, isSuperAdmin } = require("../utils/roles");
 const { resolveCompanyId } = require("../utils/companyScope");
 
@@ -259,6 +260,139 @@ const register = async (req, res) => {
     }
 };
 
+const OTP_MINUTES = 10;
+const RESET_TOKEN_EXPIRES_IN = "15m";
+const MAX_OTP_ATTEMPTS = 5;
+const FORGOT_MESSAGE = "If the account exists, an OTP has been sent";
+
+const forgotPassword = async (req, res) => {
+    try {
+        const email = String(req.body.email || "").trim().toLowerCase();
+
+        if (!email) {
+            throw new HttpError(400, "Email is required");
+        }
+
+        const user = await userModel.findForPasswordReset(email);
+
+        if (!user || Number(user.status) !== 1) {
+            return res.status(200).json({
+                success: true,
+                message: FORGOT_MESSAGE
+            });
+        }
+
+        const otp = String(crypto.randomInt(100000, 1000000));
+        const otpHash = await bcrypt.hash(otp, BCRYPT_ROUNDS);
+        const expiresAt = new Date(Date.now() + OTP_MINUTES * 60 * 1000);
+
+        await sendPasswordOtp(user.email, user.name, otp);
+        await userModel.savePasswordOtp(user.id, otpHash, expiresAt);
+
+        return res.status(200).json({
+            success: true,
+            message: FORGOT_MESSAGE
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const verifyOtp = async (req, res) => {
+    try {
+        const email = String(req.body.email || "").trim().toLowerCase();
+        const otp = String(req.body.otp || "").trim();
+
+        if (!email || !otp) {
+            throw new HttpError(400, "Email and OTP are required");
+        }
+
+        const user = await userModel.findForPasswordReset(email);
+
+        if (!user || Number(user.status) !== 1 || !user.otp_hash || !user.otp_expires_at) {
+            throw new HttpError(400, "Invalid or expired OTP");
+        }
+
+        if (Number(user.otp_attempts) >= MAX_OTP_ATTEMPTS) {
+            throw new HttpError(429, "Too many OTP attempts. Request a new OTP");
+        }
+
+        if (new Date(user.otp_expires_at) <= new Date()) {
+            throw new HttpError(400, "Invalid or expired OTP");
+        }
+
+        const match = await bcrypt.compare(otp, user.otp_hash);
+
+        if (!match) {
+            await userModel.incrementOtpAttempts(user.id);
+            throw new HttpError(400, "Invalid or expired OTP");
+        }
+
+        const resetToken = jwt.sign(
+            {
+                id: user.id,
+                email: user.email,
+                purpose: "password_reset"
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: RESET_TOKEN_EXPIRES_IN }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "OTP verified",
+            reset_token: resetToken
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const { reset_token: resetToken, new_password: newPassword } = req.body;
+
+        if (!resetToken || !newPassword) {
+            throw new HttpError(400, "reset_token and new_password are required");
+        }
+
+        assertStrongPassword(newPassword);
+
+        let payload;
+
+        try {
+            payload = jwt.verify(resetToken, process.env.JWT_SECRET);
+        } catch (error) {
+            throw new HttpError(401, "Invalid or expired reset token");
+        }
+
+        if (payload.purpose !== "password_reset" || !payload.id) {
+            throw new HttpError(401, "Invalid or expired reset token");
+        }
+
+        const user = await userModel.findForPasswordReset(payload.email);
+
+        if (!user || Number(user.id) !== Number(payload.id) || Number(user.status) !== 1) {
+            throw new HttpError(401, "Invalid or expired reset token");
+        }
+
+        if (!user.otp_hash) {
+            throw new HttpError(400, "OTP is no longer valid. Request a new one");
+        }
+
+        const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+        await userModel.resetPassword(user.id, passwordHash);
+        await refreshTokenModel.revokeAllForUser(user.id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Password reset successfully"
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 const createSession = (user) => {
     const { token } = signAccessToken(user);
 
@@ -274,5 +408,8 @@ module.exports = {
     logout,
     profile,
     register,
-    createSession
+    createSession,
+    forgotPassword,
+    verifyOtp,
+    resetPassword
 };

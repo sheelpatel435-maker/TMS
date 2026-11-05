@@ -150,6 +150,65 @@ const deactivateUser = async (id) => {
     return result.affectedRows;
 };
 
+const findForPasswordReset = async (email) => {
+    const [rows] = await db.execute(
+        `SELECT id, name, email, status, otp_hash, otp_expires_at, otp_attempts
+         FROM users
+         WHERE LOWER(email) = LOWER(?)
+         LIMIT 1`,
+        [email]
+    );
+
+    return rows[0] || null;
+};
+
+const savePasswordOtp = async (id, otpHash, expiresAt) => {
+    await db.execute(
+        `UPDATE users
+         SET otp_hash = ?,
+             otp_expires_at = ?,
+             otp_attempts = 0
+         WHERE id = ?`,
+        [otpHash, expiresAt, id]
+    );
+};
+
+const incrementOtpAttempts = async (id) => {
+    await db.execute(
+        `UPDATE users
+         SET otp_attempts = otp_attempts + 1
+         WHERE id = ?`,
+        [id]
+    );
+};
+
+const clearPasswordOtp = async (id) => {
+    await db.execute(
+        `UPDATE users
+         SET otp_hash = NULL,
+             otp_expires_at = NULL,
+             otp_attempts = 0
+         WHERE id = ?`,
+        [id]
+    );
+};
+
+const resetPassword = async (id, passwordHash) => {
+    const [result] = await db.execute(
+        `UPDATE users
+         SET password_hash = ?,
+             password_changed_at = CURRENT_TIMESTAMP,
+             token_version = token_version + 1,
+             otp_hash = NULL,
+             otp_expires_at = NULL,
+             otp_attempts = 0
+         WHERE id = ?`,
+        [passwordHash, id]
+    );
+
+    return result.affectedRows;
+};
+
 const assignCompanyAdmin = async (userId, companyId) => {
     await db.execute(
         `UPDATE users
@@ -169,5 +228,10 @@ module.exports = {
     createUser,
     updateUser,
     deactivateUser,
-    assignCompanyAdmin
+    assignCompanyAdmin,
+    findForPasswordReset,
+    savePasswordOtp,
+    incrementOtpAttempts,
+    clearPasswordOtp,
+    resetPassword
 };
