@@ -71,7 +71,32 @@ const createUserAccess = async (data) => {
     return rows[0]?.id;
 };
 
+const getUserAccessById = async (id) => {
+    const [rows] = await db.execute(
+        `SELECT id, user_id, module_id, can_view, can_create, can_update, can_delete,
+                can_approve, can_export, can_dispatch, can_close, created_at, updated_at
+         FROM user_module_access
+         WHERE id = ?
+         LIMIT 1`,
+        [id]
+    );
+
+    return rows[0] || null;
+};
+
+const deleteUserAccess = async (id) => {
+    const [result] = await db.execute(
+        `DELETE FROM user_module_access
+         WHERE id = ?`,
+        [id]
+    );
+
+    return result.affectedRows;
+};
+
 module.exports = {
     getUserAccess,
-    createUserAccess
+    getUserAccessById,
+    createUserAccess,
+    deleteUserAccess
 };

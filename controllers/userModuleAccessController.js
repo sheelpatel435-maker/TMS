@@ -112,7 +112,42 @@ const createUserAccess = async (req, res) => {
     }
 };
 
+const deleteUserAccess = async (req, res) => {
+    try {
+        if (!isAdmin(req.user)) {
+            throw new HttpError(403, "Admin access is required");
+        }
+
+        const accessId = req.params.id;
+        const existing = await userModuleAccessModel.getUserAccessById(accessId);
+
+        if (!existing) {
+            throw new HttpError(404, "Access record not found");
+        }
+
+        if (isSuperAdmin(req.user)) {
+            const target = await getById("users", existing.user_id);
+
+            if (!target) {
+                throw new HttpError(400, "User not found");
+            }
+        } else {
+            await assertOwnedUser(existing.user_id, req.user.company_id);
+        }
+
+        await userModuleAccessModel.deleteUserAccess(existing.id);
+
+        return res.status(200).json({
+            success: true,
+            message: "User module access revoked successfully"
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 module.exports = {
     getUserAccess,
-    createUserAccess
+    createUserAccess,
+    deleteUserAccess
 };
