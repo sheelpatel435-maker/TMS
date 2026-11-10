@@ -3,20 +3,6 @@
 const jwt = require("jsonwebtoken");
 const userModel = require("../models/userModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
-const { sendError } = require("../utils/httpError");
-
-const reject = (res, status, message) =>
-    res.status(status).json({ success: false, message });
-
-const extractToken = (req) => {
-    const header = req.headers.authorization;
-
-    if (!header) {
-        return null;
-    }
-
-    return header.startsWith("Bearer ") ? header.split(" ")[1] : header;
-};
 
 const authMiddleware = async (req, res, next) => {
     const token = extractToken(req);
@@ -72,6 +58,38 @@ const authMiddleware = async (req, res, next) => {
             jti: decoded.jti,
             token_version: user.token_version
         };
+
+        // Super admin has no fixed company — apply selected desk from X-Company-Id.
+        if (isSuperAdmin(req.user)) {
+            const requestedCompanyId = readRequestedCompanyId(req);
+
+            if (Number.isNaN(requestedCompanyId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Company ID is required"
+                });
+            }
+
+            if (requestedCompanyId) {
+                const [rows] = await db.execute(
+                    `SELECT id, name, status
+                     FROM companies
+                     WHERE id = ? AND status = 1
+                     LIMIT 1`,
+                    [requestedCompanyId]
+                );
+
+                if (!rows[0]) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Select an active company"
+                    });
+                }
+
+                req.user.company_id = rows[0].id;
+                req.company = rows[0];
+            }
+        }
 
         return next();
     } catch (error) {

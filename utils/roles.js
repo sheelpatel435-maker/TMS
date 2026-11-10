@@ -16,14 +16,10 @@ const requireAdmin = (req, res, next) => {
 };
 
 const requireCompanyContext = (req, res, next) => {
-    if (isSuperAdmin(req.user)) {
-        return next();
-    }
-
     if (!req.user?.company_id) {
         return res.status(400).json({
             success: false,
-            message: "User is not assigned to a company"
+            message: "Company ID is required"
         });
     }
 
