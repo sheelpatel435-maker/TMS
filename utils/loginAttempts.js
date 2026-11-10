@@ -1,59 +1,121 @@
+
+
 const { HttpError } = require("./httpError");
 
 const WINDOW_MS = 15 * 60 * 1000;
-const MAX_ATTEMPTS = 5;
-const attempts = new Map();
 
-const keyFor = (req) =>
-    `${req.ip}:${String(req.body?.email || "").trim().toLowerCase()}`;
+const createLimiter = ({ windowMs = WINDOW_MS, max, message }) => {
+    const records = new Map();
 
-const pruneExpired = () => {
-    const now = Date.now();
+    const active = (key) => {
+        const record = records.get(key);
 
-    for (const [key, record] of attempts.entries()) {
-        if (now - record.start >= WINDOW_MS) {
-            attempts.delete(key);
+        if (!record) {
+            return null;
         }
-    }
+
+        if (Date.now() - record.start >= windowMs) {
+            records.delete(key);
+            return null;
+        }
+
+        return record;
+    };
+
+    setInterval(() => {
+        for (const key of records.keys()) {
+            active(key);
+        }
+    }, windowMs).unref?.();
+
+    return {
+        assert(key) {
+            const record = active(key);
+
+            if (record && record.count >= max) {
+                throw new HttpError(429, message);
+            }
+        },
+        fail(key) {
+            const record = active(key);
+
+            if (!record) {
+                records.set(key, { count: 1, start: Date.now() });
+                return;
+            }
+
+            record.count += 1;
+        },
+        clear(key) {
+            records.delete(key);
+        }
+    };
 };
 
-setInterval(pruneExpired, WINDOW_MS).unref?.();
+const identifierOf = (req, identifier) =>
+    String(
+        identifier ??
+            req.body?.identifier ??
+            req.body?.email ??
+            req.body?.mobile ??
+            ""
+    )
+        .trim()
+        .toLowerCase();
 
-const assertNotLocked = (req) => {
-    pruneExpired();
-    const record = attempts.get(keyFor(req));
+// Login: IP + identifier par 5 fail, aur sirf identifier par 10 fail
+// (alag-alag IP se brute force rokne ke liye).
+const loginByIp = createLimiter({
+    max: 5,
+    message: "Too many login attempts. Try again in 15 minutes"
+});
+const loginById = createLimiter({
+    max: 10,
+    message: "Too many login attempts. Try again in 15 minutes"
+});
 
-    if (
-        record &&
-        Date.now() - record.start < WINDOW_MS &&
-        record.count >= MAX_ATTEMPTS
-    ) {
-        throw new HttpError(
-            429,
-            "Too many login attempts. Try again in 15 minutes"
-        );
-    }
+const assertNotLocked = (req, identifier) => {
+    const id = identifierOf(req, identifier);
+
+    loginByIp.assert(`${req.ip}:${id}`);
+    loginById.assert(id);
 };
 
-const recordFailure = (req) => {
-    const key = keyFor(req);
-    const now = Date.now();
-    const record = attempts.get(key);
+const recordFailure = (req, identifier) => {
+    const id = identifierOf(req, identifier);
 
-    if (!record || now - record.start >= WINDOW_MS) {
-        attempts.set(key, { count: 1, start: now });
-        return;
-    }
-
-    record.count += 1;
+    loginByIp.fail(`${req.ip}:${id}`);
+    loginById.fail(id);
 };
 
-const clearFailures = (req) => {
-    attempts.delete(keyFor(req));
+const clearFailures = (req, identifier) => {
+    loginByIp.clear(`${req.ip}:${identifierOf(req, identifier)}`);
 };
+
+// OTP request: har request count hoti hai (SMS bombing rokne ke liye)
+const otpRequestLimiter = createLimiter({
+    max: 10,
+    message: "Too many OTP requests. Try again later"
+});
+
+// OTP verify / reset: IP + mobile par galat attempts
+const otpVerifyLimiter = createLimiter({
+    max: 10,
+    message: "Too many attempts. Try again in 15 minutes"
+});
+
+// Password change: user id par galat current password
+const passwordChangeLimiter = createLimiter({
+    max: 5,
+    message: "Too many attempts. Try again in 15 minutes"
+});
 
 module.exports = {
+    createLimiter,
     assertNotLocked,
     recordFailure,
-    clearFailures
+    clearFailures,
+    otpRequestLimiter,
+    otpVerifyLimiter,
+    passwordChangeLimiter
 };
