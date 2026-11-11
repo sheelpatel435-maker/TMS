@@ -4,11 +4,20 @@ const db = require("../config/db");
 const hashToken = (token) =>
     crypto.createHash("sha256").update(token).digest("hex");
 
-const create = async (userId, token, expiresAt) => {
+const create = async (userId, token, expiresAt, tokenVersion) => {
+    if (
+        tokenVersion === null ||
+        tokenVersion === undefined ||
+        !Number.isSafeInteger(Number(tokenVersion))
+    ) {
+        throw new Error("Refresh token requires a valid token version");
+    }
+
     await db.execute(
-        `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-         VALUES (?, ?, ?)`,
-        [userId, hashToken(token), expiresAt]
+        `INSERT INTO refresh_tokens
+            (user_id, token_hash, expires_at, token_version)
+         VALUES (?, ?, ?, ?)`,
+        [userId, hashToken(token), expiresAt, tokenVersion]
     );
 };
 

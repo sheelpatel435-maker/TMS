@@ -37,7 +37,6 @@ const dashboardController = require("../controllers/dashboardController");
 const fileController = require("../controllers/fileController");
 const authMiddleware = require("../middleware/authMiddleware");
 const accessLog = require("../middleware/accessLog");
-const { requireAdmin } = require("../utils/roles");
 const swaggerUi = require("swagger-ui-express");
 const openapi = require("./openapi");
 
@@ -150,7 +149,12 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/users", userRoutes);
-app.post("/api/register", authMiddleware, requireAdmin, authController.register);
+app.post("/api/register", (_req, res) =>
+    res.status(410).json({
+        success: false,
+        message: "Ye endpoint band hai. Admin panel se user banaye jaate hain."
+    })
+);
 app.post("/api/login", authController.login);
 app.post("/api/refresh", authController.refresh);
 app.post("/api/logout", authMiddleware, authController.logout);

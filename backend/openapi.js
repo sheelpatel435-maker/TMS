@@ -123,12 +123,9 @@ const spec = {
         "/api/register": {
             post: {
                 tags: ["Auth"],
-                summary: "Deprecated: user creation is available through POST /api/users",
-                security: [{ bearerAuth: [] }],
+                summary: "Disabled endpoint",
                 responses: {
-                    401: { description: "Authentication is required" },
-                    403: { description: "Admin access is required" },
-                    410: { description: "This endpoint has been removed; use POST /api/users" }
+                    410: { description: "Ye endpoint band hai. Admin panel se user banaye jaate hain." }
                 }
             }
         },

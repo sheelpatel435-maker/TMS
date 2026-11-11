@@ -63,7 +63,7 @@ const signAccessToken = (user) => {
             company_id: user.company_id,
             user_type: user.user_type,
             email: user.email,
-            token_version: user.token_version || 1,
+            token_version: Number(user.token_version),
             jti
         },
         process.env.JWT_SECRET,
@@ -76,13 +76,18 @@ const signAccessToken = (user) => {
     return { token, jti };
 };
 
-const issueRefreshToken = async (userId) => {
+const issueRefreshToken = async (user) => {
     const token = crypto.randomBytes(48).toString("hex");
     const expiresAt = new Date(
         Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000
     );
 
-    await refreshTokenModel.create(userId, token, expiresAt);
+    await refreshTokenModel.create(
+        user.id,
+        token,
+        expiresAt,
+        user.token_version
+    );
 
     return { token, expiresAt };
 };
@@ -99,7 +104,7 @@ const publicUser = (user) => ({
 
 const buildLoginResponse = async (user, message) => {
     const { token } = signAccessToken(user);
-    const refresh = await issueRefreshToken(user.id);
+    const refresh = await issueRefreshToken(user);
 
     return {
         success: true,
@@ -468,13 +473,22 @@ const refresh = async (req, res) => {
             throw new HttpError(401, "User account is not active");
         }
 
+        if (
+            stored.token_version === null ||
+            stored.token_version === undefined ||
+            !Number.isSafeInteger(Number(stored.token_version)) ||
+            Number(stored.token_version) !== Number(user.token_version)
+        ) {
+            throw new HttpError(401, "Refresh token has been revoked");
+        }
+
         // Atomic rotate: do parallel requests me se sirf ek hi token use kar payegi
         if (!(await refreshTokenModel.revokeByToken(refreshToken))) {
             throw new HttpError(401, "Refresh token has been revoked");
         }
 
         const { token } = signAccessToken(user);
-        const nextRefresh = await issueRefreshToken(user.id);
+        const nextRefresh = await issueRefreshToken(user);
 
         return res.status(200).json({
             success: true,
@@ -530,14 +544,6 @@ const profile = async (req, res) => {
     }
 };
 
-// Purana endpoint. Users sirf Users module (createUser) se bante hain, kyunki wahan
-// mobile/email validation, uniqueness aur audit hai. Route hata sakte ho.
-const register = (req, res) =>
-    res.status(410).json({
-        success: false,
-        message: "This endpoint is removed. Create users from the Users module"
-    });
-
 const createSession = (user) => {
     const { token } = signAccessToken(user);
 
@@ -557,6 +563,5 @@ module.exports = {
     refresh,
     logout,
     profile,
-    register,
     createSession
 };

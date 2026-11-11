@@ -3,10 +3,14 @@ const router = express.Router();
 
 const authController = require("../../controllers/authController");
 const authMiddleware = require("../../middleware/authMiddleware");
-const { requireAdmin } = require("../../utils/roles");
 
 router.post("/login", authController.login);
-router.post("/register", authMiddleware, requireAdmin, authController.register);
+router.post("/register", (_req, res) =>
+    res.status(410).json({
+        success: false,
+        message: "Ye endpoint band hai. Admin panel se user banaye jaate hain."
+    })
+);
 router.post("/refresh", authController.refresh);
 router.post("/logout", authMiddleware, authController.logout);
 router.post("/otp/request", authController.requestLoginOtp);

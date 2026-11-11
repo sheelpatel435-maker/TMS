@@ -87,7 +87,7 @@ const authMiddleware = async (req, res, next) => {
         }
 
         if (Number(user.status) !== 1) {
-            return reject(res, 403, "User account is not active");
+            return reject(res, 401, "User account is not active");
         }
 
         if (user.company_id && Number(user.company_status) !== 1) {

@@ -110,6 +110,7 @@ const ensureSchema = async () => {
             user_id BIGINT UNSIGNED NOT NULL,
             token_hash VARCHAR(64) NOT NULL,
             expires_at DATETIME NOT NULL,
+            token_version INT NULL DEFAULT NULL,
             revoked_at DATETIME NULL DEFAULT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -117,6 +118,11 @@ const ensureSchema = async () => {
             KEY idx_refresh_user (user_id)
         )
     `);
+    await addColumnIfMissing(
+        "refresh_tokens",
+        "token_version",
+        "INT NULL DEFAULT NULL"
+    );
 
     if (!(await tableExists("trip_final_reports"))) {
         await db.query(`
