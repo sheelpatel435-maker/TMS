@@ -311,7 +311,9 @@ const updateUserStatus = async (req, res, status) => {
             throw new HttpError(404, "User not found");
         }
 
-        assertCanManageUser(req.user, existing);
+        assertCanManageUser(req.user, existing, {
+            allowSuperAdminCompanyAdminStatus: true
+        });
 
         if (Number(existing.status) === status) {
             return res.status(200).json({

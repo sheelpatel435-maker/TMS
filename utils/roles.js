@@ -31,7 +31,10 @@ const requireCompanyContext = (req, res, next) => {
 const assertCanManageUser = (
     reqUser,
     targetUser,
-    { allowSelfProfileEdit = false } = {}
+    {
+        allowSelfProfileEdit = false,
+        allowSuperAdminCompanyAdminStatus = false
+    } = {}
 ) => {
     const isSelf = Number(reqUser?.id) === Number(targetUser?.id);
 
@@ -47,7 +50,16 @@ const assertCanManageUser = (
         throw new HttpError(404, "User not found");
     }
 
-    if (!isSelf && targetUser.user_type !== "COMPANY_USER") {
+    const canManageCompanyAdminStatus =
+        allowSuperAdminCompanyAdminStatus &&
+        isSuperAdmin(reqUser) &&
+        targetUser.user_type === "COMPANY_ADMIN";
+
+    if (
+        !isSelf &&
+        targetUser.user_type !== "COMPANY_USER" &&
+        !canManageCompanyAdminStatus
+    ) {
         throw new HttpError(403, "Only COMPANY_USER accounts can be managed");
     }
 };
