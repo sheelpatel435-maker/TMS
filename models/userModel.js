@@ -26,6 +26,25 @@ const findUserByEmail = async (email) => {
     return rows[0];
 };
 
+const findDuplicateContact = async (mobile, email, excludeUserId = null) => {
+    const [rows] = await db.execute(
+        `SELECT id
+         FROM users
+         WHERE (
+             REGEXP_REPLACE(
+                 REGEXP_REPLACE(TRIM(mobile), '[[:space:]-]', ''),
+                 '^[+]91',
+                 ''
+             ) = ?
+             OR (? IS NOT NULL AND LOWER(TRIM(email)) = LOWER(?))
+         )
+         AND (? IS NULL OR id <> ?)
+         LIMIT 1`,
+        [mobile, email, email, excludeUserId, excludeUserId]
+    );
+
+    return rows[0] || null;
+};
 
 const findUserByMobile = async (mobile) => {
     const [rows] = await db.execute(
@@ -166,98 +185,123 @@ const createUser = async (data) => {
         `INSERT INTO users
         (company_id, user_type, name, mobile, email, password_hash,
          password_changed_at, status)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+        VALUES (?, 'COMPANY_USER', ?, ?, ?, ?, CURRENT_TIMESTAMP, 1)`,
         [
-            data.company_id || null,
-            data.user_type,
+            data.company_id,
             data.name,
             data.mobile,
             data.email || null,
-            data.password_hash,
-            toTinyIntStatus(data.status, 1)
+            data.password_hash
         ]
     );
 
     return result.insertId;
 };
 
+const updateUser = async (id, data) => {
+    const fields = [];
+    const params = [];
 
-const updateUser = async (id, data, scopeCompanyId = null) => {
-    const fields = [
-        "company_id = ?",
-        "user_type = ?",
-        "name = ?",
-        "mobile = ?",
-        "email = ?",
-        "status = ?"
-    ];
-    const params = [
-        data.company_id || null,
-        data.user_type,
-        data.name,
-        data.mobile,
-        data.email || null,
-        toTinyIntStatus(data.status, 1)
-    ];
+    for (const field of ["name", "mobile", "email"]) {
+        if (data[field] !== undefined) {
+            fields.push(`${field} = ?`);
+            params.push(data[field]);
+        }
+    }
 
     if (data.password_hash) {
         fields.push("password_hash = ?", "password_changed_at = CURRENT_TIMESTAMP");
         params.push(data.password_hash);
     }
 
-    let where = "id = ?";
+    if (fields.length === 0) {
+        return 0;
+    }
+
     params.push(id);
 
-    if (scopeCompanyId) {
-        where += " AND company_id = ?";
-        params.push(scopeCompanyId);
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        if (data.password_hash) {
+            fields.push("token_version = token_version + 1");
+        }
+
+        const [result] = await connection.execute(
+            `UPDATE users
+             SET ${fields.join(", ")}
+             WHERE id = ?`,
+            params
+        );
+
+        if (data.password_hash && result.affectedRows > 0) {
+            await connection.execute(
+                `UPDATE refresh_tokens
+                 SET revoked_at = UTC_TIMESTAMP()
+                 WHERE user_id = ?
+                 AND revoked_at IS NULL`,
+                [id]
+            );
+        }
+
+        await connection.commit();
+        return result.affectedRows;
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
     }
-
-    const [result] = await db.execute(
-        `UPDATE users
-         SET ${fields.join(", ")}
-         WHERE ${where}`,
-        params
-    );
-
-    return result.affectedRows;
 };
 
-const deactivateUser = async (id, scopeCompanyId = null) => {
-    const params = [id];
-    let scope = "";
-
-    if (scopeCompanyId) {
-        scope = "AND company_id = ?";
-        params.push(scopeCompanyId);
+const setUserStatus = async (userId, status) => {
+    if (status !== 0 && status !== 1) {
+        throw new Error("User status must be 0 or 1");
     }
 
-    const [result] = await db.execute(
-        `UPDATE users
-         SET status = 0,
-             token_version = token_version + 1
-         WHERE id = ?
-         AND status = 1
-         ${scope}`,
-        params
-    );
+    const connection = await db.getConnection();
 
-    return result.affectedRows;
-};
+    try {
+        await connection.beginTransaction();
 
-const assignCompanyAdmin = async (userId, companyId) => {
-    await db.execute(
-        `UPDATE users
-         SET company_id = ?,
-             user_type = 'COMPANY_ADMIN'
-         WHERE id = ?`,
-        [companyId, userId]
-    );
+        const [result] = await connection.execute(
+            `UPDATE users
+             SET status = ?,
+                 token_version = CASE
+                     WHEN ? = 0 THEN token_version + 1
+                     ELSE token_version
+                 END
+             WHERE id = ?
+             AND status <> ?`,
+            [status, status, userId, status]
+        );
+
+        if (status === 0 && result.affectedRows > 0) {
+            await connection.execute(
+                `UPDATE refresh_tokens
+                 SET revoked_at = UTC_TIMESTAMP()
+                 WHERE user_id = ?
+                 AND revoked_at IS NULL`,
+                [userId]
+            );
+        }
+
+        await connection.commit();
+        return result.affectedRows;
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 };
 
 module.exports = {
     findUserByEmail,
     findUserByMobile,
+    findDuplicateContact,
     findAuthByEmail,
     findAuthByMobile,
     findAuthById,
@@ -269,6 +313,5 @@ module.exports = {
     markMobileVerified,
     createUser,
     updateUser,
-    deactivateUser,
-    assignCompanyAdmin
+    setUserStatus
 };

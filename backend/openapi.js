@@ -86,7 +86,7 @@ const spec = {
         description:
             "Transport Management System. Login first, then click Authorize and paste the token. " +
             "SUPER_ADMIN and COMPANY_ADMIN bypass module permissions. COMPANY_USER needs a flag in user_module_access. " +
-            "Every list is filtered by the company on the token."
+            "Company-scoped operations use the user's company; SUPER_ADMIN can optionally select an active company with X-Company-Id."
     },
     servers: [{ url: "http://localhost:5000", description: "Local server" }],
     components: {
@@ -123,19 +123,13 @@ const spec = {
         "/api/register": {
             post: {
                 tags: ["Auth"],
-                summary: "Admin-only: create a company user (prefer POST /api/users)",
+                summary: "Deprecated: user creation is available through POST /api/users",
                 security: [{ bearerAuth: [] }],
-                requestBody: jsonBody(
-                    {
-                        name: "Amit Kumar",
-                        mobile: "9876543210",
-                        email: "amit@example.com",
-                        password: "Secret1a",
-                        company_id: 1
-                    },
-                    ["name", "mobile", "password"]
-                ),
-                responses: created
+                responses: {
+                    401: { description: "Authentication is required" },
+                    403: { description: "Admin access is required" },
+                    410: { description: "This endpoint has been removed; use POST /api/users" }
+                }
             }
         },
         "/api/login": {
@@ -143,7 +137,7 @@ const spec = {
                 tags: ["Auth"],
                 summary: "Login and receive a JWT",
                 requestBody: jsonBody(
-                    { email: "admin@tms.com", password: "123456" },
+                    { email: "admin@tms.com", password: "Secret123" },
                     ["email", "password"]
                 ),
                 responses: {
@@ -174,6 +168,71 @@ const spec = {
         "/api/auth/refresh": { post: { $ref: "#/paths/~1api~1refresh/post" } },
         "/api/auth/logout": { post: { $ref: "#/paths/~1api~1logout/post" } },
         "/api/auth/profile": { get: { $ref: "#/paths/~1api~1profile/get" } },
+        "/api/auth/otp/request": {
+            post: {
+                tags: ["Auth"],
+                summary: "Request a login OTP for a driver or helper",
+                requestBody: jsonBody({ mobile: "9876543210" }, ["mobile"]),
+                responses: {
+                    200: { description: "A generic response is returned whether or not the mobile is registered" },
+                    400: { description: "Invalid mobile number" },
+                    429: { description: "Too many OTP requests" }
+                }
+            }
+        },
+        "/api/auth/otp/verify": {
+            post: {
+                tags: ["Auth"],
+                summary: "Verify a login OTP and receive tokens",
+                requestBody: jsonBody({ mobile: "9876543210", otp: "123456" }, ["mobile", "otp"]),
+                responses: {
+                    200: { description: "Returns access and refresh tokens" },
+                    401: { description: "OTP is invalid or expired" },
+                    429: { description: "Too many verification attempts" }
+                }
+            }
+        },
+        "/api/auth/password/forgot": {
+            post: {
+                tags: ["Auth"],
+                summary: "Request a password-reset OTP",
+                requestBody: jsonBody({ mobile: "9876543210" }, ["mobile"]),
+                responses: {
+                    200: { description: "A generic response is returned whether or not the mobile is registered" },
+                    400: { description: "Invalid mobile number" },
+                    429: { description: "Too many OTP requests" }
+                }
+            }
+        },
+        "/api/auth/password/reset": {
+            post: {
+                tags: ["Auth"],
+                summary: "Reset a password using an OTP",
+                requestBody: jsonBody(
+                    { mobile: "9876543210", otp: "123456", new_password: "Secret123" },
+                    ["mobile", "otp", "new_password"]
+                ),
+                responses: {
+                    200: { description: "Password reset; existing sessions are revoked" },
+                    400: { description: "Invalid input or weak password" },
+                    401: { description: "OTP is invalid or expired" }
+                }
+            }
+        },
+        "/api/auth/password/change": {
+            post: secured("Auth", "Change the current user's password", {
+                requestBody: jsonBody(
+                    { current_password: "Current123", new_password: "NewSecret123" },
+                    ["current_password", "new_password"]
+                ),
+                responses: {
+                    200: { description: "Password changed; a new session is returned" },
+                    400: { description: "Current password is incorrect or new password is invalid" },
+                    401: { description: "Missing or invalid token" },
+                    429: { description: "Too many attempts" }
+                }
+            })
+        },
         "/api/dashboard": {
             get: secured("Reports", "Dashboard counts, including documents expiring in 30 days")
         },
@@ -216,60 +275,103 @@ const spec = {
             get: secured("Access", "List company users. Admin only.", {
                 parameters: listParams
             }),
-            post: secured("Access", "Create a user (admin signup).", {
-                requestBody: jsonBody(
-                    {
-                        name: "Office Admin",
-                        mobile: "9876543210",
-                        email: "office@tms.com",
-                        password: "secret1",
-                        user_type: "COMPANY_ADMIN",
-                        company_id: 1
-                    },
-                    ["name", "mobile", "password"]
-                ),
-                responses: created
-            })
+            post: secured(
+                "Access",
+                "Create a COMPANY_USER in the authenticated company.",
+                {
+                    description:
+                        "Only COMPANY_ADMIN or SUPER_ADMIN can call this endpoint. user_type is optional; if sent, " +
+                        "it must be exactly COMPANY_USER. The server always sets user_type=COMPANY_USER and " +
+                        "company_id from the authenticated user. name, mobile, and password are required; email " +
+                        "is optional. Mobile follows the existing authentication format of 10 to 15 digits after " +
+                        "normalization; a +91 prefix may be supplied and is removed before saving. Mobile is " +
+                        "saved normalized. Email is validated and lowercased. Mobile and email are checked " +
+                        "for duplicates in application code and protected by database unique indexes after applying " +
+                        "the users contact migration. Successful creation is audit-logged without password data.",
+                    requestBody: jsonBody(
+                        {
+                            name: "Company User",
+                            mobile: "+91 98765-43210",
+                            email: "office@tms.com",
+                            password: "Secret123",
+                            user_type: "COMPANY_USER"
+                        },
+                        ["name", "mobile", "password"]
+                    ),
+                    responses: {
+                        201: { description: "User created and audit-logged" },
+                        400: { description: "Required fields, password, or company validation failed" },
+                        401: { description: "Authentication is required" },
+                        403: { description: "Only SUPER_ADMIN or COMPANY_ADMIN can create users" },
+                        409: { description: "Email is already registered or a database uniqueness constraint failed" }
+                    }
+                }
+            )
         },
         "/api/users/{id}": {
             get: secured("Access", "Get one user", { parameters: [idParam] }),
-            put: secured("Access", "Update a user", {
+            put: secured("Access", "Update a COMPANY_USER or update your own name/password", {
                 parameters: [idParam],
                 requestBody: jsonBody({
-                    name: "Office Admin",
-                    mobile: "9876543210",
+                    name: "Company User",
+                    mobile: "+91 98765-43210",
                     email: "office@tms.com",
-                    user_type: "COMPANY_USER",
-                    status: 1
-                })
+                    password: "NewSecret123"
+                }),
+                responses: {
+                    200: { description: "User updated; response never includes password or password hash" },
+                    400: { description: "Unsupported field, including user_type, company_id, or status; or invalid contact data" },
+                    403: { description: "Only same-company COMPANY_USER accounts can be managed; self edits are limited to name/password" },
+                    404: { description: "User not found in the current company" },
+                    409: { description: "Mobile number or email is already registered" }
+                }
             }),
             patch: { $ref: "#/paths/~1api~1users~1{id}/put" },
-            delete: secured("Access", "Deactivate a user", { parameters: [idParam] })
+            delete: secured("Access", "Deactivate a COMPANY_USER", { parameters: [idParam] })
         },
-        "/api/user-module-access": {
-            get: secured("Access", "List module flags", { parameters: listParams }),
-            post: secured("Access", "Grant module flags. Admin only.", {
-                requestBody: jsonBody(
-                    {
-                        user_id: 1,
-                        module_id: 1,
-                        can_view: 1,
-                        can_create: 1,
-                        can_update: 0,
-                        can_delete: 0,
-                        can_approve: 0,
-                        can_export: 0,
-                        can_dispatch: 0,
-                        can_close: 0
-                    },
-                    ["user_id", "module_id"]
-                ),
-                responses: created
+        "/api/users/{id}/status": {
+            patch: secured("Access", "Activate or deactivate a COMPANY_USER", {
+                parameters: [idParam],
+                requestBody: jsonBody({ status: 0 }, ["status"]),
+                responses: {
+                    200: { description: "Status changed in a transaction; deactivation invalidates access and refresh tokens" },
+                    400: { description: "Status must be 0 or 1" },
+                    403: { description: "Self status changes and non-COMPANY_USER targets are forbidden" },
+                    404: { description: "User not found in the current company" }
+                }
             })
         },
         "/api/user-module-access/{userId}": {
             get: secured("Access", "Flags for one user", {
                 parameters: [{ name: "userId", in: "path", required: true, schema: { type: "integer" } }]
+            }),
+            put: secured("Access", "Replace a COMPANY_USER's full module access checklist transactionally", {
+                parameters: [{ name: "userId", in: "path", required: true, schema: { type: "integer" } }],
+                requestBody: jsonBody(
+                    {
+                        modules: [
+                            { module_id: 1, actions: ["can_view", "can_create"] },
+                            { module_id: 2, actions: ["can_view"] }
+                        ]
+                    },
+                    ["modules"]
+                ),
+                description:
+                    "Only an administrator can save access for a different same-company COMPANY_USER. " +
+                    "Self-access assignment is forbidden. The request replaces the complete checklist atomically. " +
+                    "Allowed actions: Vehicles (including vehicle types, assignments, and documents), " +
+                    "Drivers & Helpers, Bilty, and Clients use can_view, " +
+                    "can_create, can_update, can_delete; Trips adds can_approve and can_dispatch; Trip Expenses " +
+                    "and Trip Settlement use can_view, can_create, can_approve; Invoices adds can_approve to " +
+                    "can_view, can_create, can_update, can_delete; Payments uses can_view, can_create, can_approve; " +
+                    "Reports and Audit Logs allow only can_view. " +
+                    "The former one-module POST and per-row DELETE routes are removed.",
+                responses: {
+                    200: { description: "Checklist saved and ACCESS_UPDATE audit logged" },
+                    400: { description: "Unknown module, duplicate module, or unsupported action; no changes are saved" },
+                    403: { description: "Only same-company COMPANY_USER targets can be managed; self assignment is forbidden" },
+                    404: { description: "User not found in the current company" }
+                }
             })
         },
         "/api/documents/expiring": {

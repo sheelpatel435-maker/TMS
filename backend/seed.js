@@ -51,8 +51,7 @@ const seed = async () => {
                  user_type = 'COMPANY_ADMIN',
                  name = ?,
                  mobile = ?,
-                 password_hash = ?,
-                 status = 1
+                 password_hash = ?
              WHERE email = ?`,
             [
                 companyId,

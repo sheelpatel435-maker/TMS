@@ -1,38 +1,125 @@
 const userModuleAccessModel = require("../models/userModuleAccessModel");
 const moduleModel = require("../models/moduleModel");
+const userModel = require("../models/userModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
-const { isMissing } = require("../utils/validation");
-const { isAdmin, isSuperAdmin } = require("../utils/roles");
-const { assertOwnedUser, getById } = require("../utils/companyScope");
+const { assertCanManageUser } = require("../utils/roles");
+const { MODULE_ACTIONS, normalizeModuleName } = require("../utils/moduleActions");
+const { writeAudit } = require("../utils/audit");
 
-const canManageUser = (actor, targetUserId) => {
-    if (Number(actor.id) === Number(targetUserId)) {
-        return true;
+const ACCESS_FLAGS = [
+    "can_view",
+    "can_create",
+    "can_update",
+    "can_delete",
+    "can_approve",
+    "can_export",
+    "can_dispatch",
+    "can_close"
+];
+
+const ACCESS_BITS = {
+    can_view: 1,
+    can_create: 2,
+    can_update: 4,
+    can_delete: 8,
+    can_approve: 16,
+    can_export: 32,
+    can_dispatch: 64,
+    can_close: 128
+};
+
+const getTargetUser = async (req, userId) => {
+    const user = await userModel.findUserById(userId);
+
+    if (!user) {
+        throw new HttpError(404, "User not found");
     }
 
-    return isAdmin(actor);
+    assertCanManageUser(req.user, user);
+    return user;
 };
+
+const validateModuleChecklist = async (modules) => {
+    if (!Array.isArray(modules)) {
+        throw new HttpError(400, "modules must be an array");
+    }
+
+    const seenModuleIds = new Set();
+    const validated = [];
+
+    for (const entry of modules) {
+        if (
+            !entry ||
+            !/^\d+$/.test(String(entry.module_id || "")) ||
+            !Number.isSafeInteger(Number(entry.module_id)) ||
+            Number(entry.module_id) < 1 ||
+            !Array.isArray(entry.actions)
+        ) {
+            throw new HttpError(
+                400,
+                "Each module must include a valid module_id and actions array"
+            );
+        }
+
+        const moduleId = Number(entry.module_id);
+        if (seenModuleIds.has(moduleId)) {
+            throw new HttpError(400, "A module can appear only once in the checklist");
+        }
+        seenModuleIds.add(moduleId);
+
+        const module = await moduleModel.getModuleById(moduleId);
+        if (!module || Number(module.status) !== 1) {
+            throw new HttpError(400, "Unknown or inactive module");
+        }
+
+        const moduleName = normalizeModuleName(module.name);
+        const allowedActions = MODULE_ACTIONS[moduleName];
+        if (!allowedActions) {
+            throw new HttpError(400, "Unknown module");
+        }
+
+        const seenActions = new Set();
+        for (const action of entry.actions) {
+            if (
+                typeof action !== "string" ||
+                !allowedActions.includes(action) ||
+                !ACCESS_FLAGS.includes(action) ||
+                seenActions.has(action)
+            ) {
+                throw new HttpError(
+                    400,
+                    `Action is not allowed for module ${module.name}`
+                );
+            }
+            seenActions.add(action);
+        }
+
+        validated.push({
+            module_id: moduleId,
+            actions: [...seenActions]
+        });
+    }
+
+    return validated;
+};
+
+const accessForAudit = (rows) =>
+    Object.fromEntries(
+        rows.map((row) => [
+            row.module_id,
+            ACCESS_FLAGS.reduce(
+                (mask, action) =>
+                    Number(row[action]) === 1 ? mask | ACCESS_BITS[action] : mask,
+                0
+            )
+        ])
+    );
 
 const getUserAccess = async (req, res) => {
     try {
-        const requestedUserId = req.params.userId || req.user.id;
-
-        if (!canManageUser(req.user, requestedUserId)) {
-            throw new HttpError(403, "You cannot view this user's access");
-        }
-
-        if (Number(requestedUserId) !== Number(req.user.id)) {
-            if (isSuperAdmin(req.user)) {
-                const target = await getById("users", requestedUserId);
-
-                if (!target) {
-                    throw new HttpError(400, "User not found");
-                }
-            } else {
-                await assertOwnedUser(requestedUserId, req.user.company_id);
-            }
-        }
+        const requestedUserId = req.params.userId;
+        await getTargetUser(req, requestedUserId);
 
         const { rows: access, pagination } =
             await userModuleAccessModel.getUserAccess(
@@ -50,96 +137,34 @@ const getUserAccess = async (req, res) => {
     }
 };
 
-const createUserAccess = async (req, res) => {
+const replaceUserAccess = async (req, res) => {
     try {
-        if (!isAdmin(req.user)) {
-            throw new HttpError(403, "Admin access is required");
+        if (Object.keys(req.body || {}).some((key) => key !== "modules")) {
+            throw new HttpError(400, "Only the modules checklist is accepted");
         }
 
-        const {
-            user_id,
-            module_id,
-            can_view,
-            can_create,
-            can_update,
-            can_delete,
-            can_approve,
-            can_export,
-            can_dispatch,
-            can_close
-        } = req.body;
+        const user = await getTargetUser(req, req.params.userId);
+        const modules = await validateModuleChecklist(req.body?.modules);
+        const { oldAccess, newAccess } =
+            await userModuleAccessModel.replaceUserAccess(user.id, modules);
 
-        if (isMissing(user_id) || isMissing(module_id)) {
-            throw new HttpError(400, "user_id and module_id are required");
-        }
-
-        if (isSuperAdmin(req.user)) {
-            const target = await getById("users", user_id);
-
-            if (!target) {
-                throw new HttpError(400, "User not found");
-            }
-        } else {
-            await assertOwnedUser(user_id, req.user.company_id);
-        }
-
-        const moduleRow = await moduleModel.getModuleById(module_id);
-
-        if (!moduleRow) {
-            throw new HttpError(400, "Module not found");
-        }
-
-        const accessId = await userModuleAccessModel.createUserAccess({
-            user_id,
-            module_id,
-            can_view,
-            can_create,
-            can_update,
-            can_delete,
-            can_approve,
-            can_export,
-            can_dispatch,
-            can_close
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: "User module access saved successfully",
-            access_id: accessId
-        });
-    } catch (error) {
-        return sendError(res, error);
-    }
-};
-
-const deleteUserAccess = async (req, res) => {
-    try {
-        if (!isAdmin(req.user)) {
-            throw new HttpError(403, "Admin access is required");
-        }
-
-        const accessId = req.params.id;
-        const existing = await userModuleAccessModel.getUserAccessById(accessId);
-
-        if (!existing) {
-            throw new HttpError(404, "Access record not found");
-        }
-
-        if (isSuperAdmin(req.user)) {
-            const target = await getById("users", existing.user_id);
-
-            if (!target) {
-                throw new HttpError(400, "User not found");
-            }
-        } else {
-            await assertOwnedUser(existing.user_id, req.user.company_id);
-        }
-
-        await userModuleAccessModel.deleteUserAccess(existing.id);
+        await writeAudit(
+            req,
+            "ACCESS_UPDATE",
+            "user",
+            user.id,
+            JSON.stringify({
+                action_bits:
+                    "view=1,create=2,update=4,delete=8,approve=16,export=32,dispatch=64,close=128",
+                old: accessForAudit(oldAccess),
+                new: accessForAudit(newAccess)
+            })
+        );
 
         return res.status(200).json({
             success: true,
-            message: "User module access revoked successfully"
+            message: "User module access saved successfully",
+            access: newAccess
         });
     } catch (error) {
         return sendError(res, error);
@@ -148,6 +173,6 @@ const deleteUserAccess = async (req, res) => {
 
 module.exports = {
     getUserAccess,
-    createUserAccess,
-    deleteUserAccess
+    replaceUserAccess,
+    validateModuleChecklist
 };

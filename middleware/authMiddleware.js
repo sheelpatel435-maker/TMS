@@ -1,8 +1,47 @@
-
-
-const jwt = require("jsonwebtoken");
+﻿const jwt = require("jsonwebtoken");
+const db = require("../config/db");
 const userModel = require("../models/userModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
+const { sendError } = require("../utils/httpError");
+const { isSuperAdmin } = require("../utils/roles");
+
+const extractToken = (req) => {
+    const authHeader = req.headers?.authorization;
+
+    if (typeof authHeader === "string") {
+        const match = authHeader.match(/^Bearer\s+(.+)$/i);
+        return match ? match[1].trim() : null;
+    }
+
+    return null;
+};
+
+const reject = (res, status, message) =>
+    res.status(status).json({
+        success: false,
+        message
+    });
+
+const readRequestedCompanyId = (req) => {
+    const rawValue =
+        req.headers?.["x-company-id"] ??
+        req.query?.company_id ??
+        req.body?.company_id;
+
+    if (rawValue === undefined || rawValue === null || rawValue === "") {
+        return null;
+    }
+
+    if (
+        (typeof rawValue !== "string" && typeof rawValue !== "number") ||
+        (typeof rawValue === "string" && !/^\d+$/.test(rawValue))
+    ) {
+        return Number.NaN;
+    }
+
+    const value = Number(rawValue);
+    return Number.isSafeInteger(value) && value > 0 ? value : Number.NaN;
+};
 
 const authMiddleware = async (req, res, next) => {
     const token = extractToken(req);
@@ -22,6 +61,17 @@ const authMiddleware = async (req, res, next) => {
     }
 
     try {
+        if (
+            !decoded ||
+            typeof decoded !== "object" ||
+            !(decoded.id || decoded.user_id) ||
+            typeof decoded.jti !== "string" ||
+            !decoded.jti ||
+            !Number.isSafeInteger(Number(decoded.token_version))
+        ) {
+            return reject(res, 401, "Invalid or expired token");
+        }
+
         if (await revokedTokenModel.isRevoked(decoded.jti)) {
             return reject(res, 401, "Token has been revoked");
         }
@@ -32,7 +82,6 @@ const authMiddleware = async (req, res, next) => {
             return reject(res, 401, "Invalid or expired token");
         }
 
-     
         if (Number(decoded.token_version) !== Number(user.token_version)) {
             return reject(res, 401, "Token has been revoked");
         }
@@ -41,7 +90,6 @@ const authMiddleware = async (req, res, next) => {
             return reject(res, 403, "User account is not active");
         }
 
-        // Company deactivate hone par uske saare users turant block
         if (user.company_id && Number(user.company_status) !== 1) {
             return reject(res, 403, "Company is not active");
         }
@@ -59,18 +107,17 @@ const authMiddleware = async (req, res, next) => {
             token_version: user.token_version
         };
 
-        // Super admin has no fixed company — apply selected desk from X-Company-Id.
         if (isSuperAdmin(req.user)) {
             const requestedCompanyId = readRequestedCompanyId(req);
 
             if (Number.isNaN(requestedCompanyId)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Company ID is required"
+                    message: "Company ID must be a positive integer"
                 });
             }
 
-            if (requestedCompanyId) {
+            if (requestedCompanyId !== null) {
                 const [rows] = await db.execute(
                     `SELECT id, name, status
                      FROM companies
@@ -93,7 +140,6 @@ const authMiddleware = async (req, res, next) => {
 
         return next();
     } catch (error) {
-      
         return sendError(res, error);
     }
 };

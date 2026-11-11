@@ -4,17 +4,13 @@ const companyModel = require("../models/companyModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
-const { isAdmin, isSuperAdmin } = require("../utils/roles");
+const { isAdmin, isSuperAdmin, assertCanManageUser } = require("../utils/roles");
 const { writeAudit } = require("../utils/audit");
 const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
-
-const ALLOWED_TYPES = [
-    "SUPER_ADMIN",
-    "COMPANY_ADMIN",
-    "COMPANY_USER",
-    "DRIVER",
-    "HELPER"
-];
+const {
+    requireValidMobile,
+    requireValidEmail
+} = require("../utils/userValidation");
 
 const publicUser = (user) => ({
     id: user.id,
@@ -45,36 +41,25 @@ const resolveListCompanyId = (req) => {
     return req.user.company_id;
 };
 
-const assertCanManage = (actor, target) => {
-    if (isSuperAdmin(actor)) {
-        return;
+const auditUser = (user) => ({
+    id: user.id,
+    company_id: user.company_id,
+    user_type: user.user_type,
+    name: user.name,
+    mobile: user.mobile,
+    email: user.email,
+    status: user.status
+});
+
+const rejectDuplicateContact = (res, error) => {
+    if (error?.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+            success: false,
+            message: "Mobile number or email is already registered"
+        });
     }
 
-    if (!isAdmin(actor)) {
-        throw new HttpError(403, "Admin access is required");
-    }
-
-    if (Number(target.company_id) !== Number(actor.company_id)) {
-        throw new HttpError(403, "User does not belong to this company");
-    }
-
-    if (target.user_type === "SUPER_ADMIN") {
-        throw new HttpError(403, "Cannot manage super admin users");
-    }
-};
-
-const normalizeType = (value, actor) => {
-    const type = String(value || "COMPANY_USER").trim().toUpperCase();
-
-    if (!ALLOWED_TYPES.includes(type)) {
-        throw new HttpError(400, "Invalid user_type");
-    }
-
-    if (!isSuperAdmin(actor) && type === "SUPER_ADMIN") {
-        throw new HttpError(403, "Only super admin can create SUPER_ADMIN");
-    }
-
-    return type;
+    return sendError(res, error);
 };
 
 const getUsers = async (req, res) => {
@@ -116,7 +101,12 @@ const getUserById = async (req, res) => {
             throw new HttpError(404, "User not found");
         }
 
-        assertCanManage(req.user, user);
+        if (
+            !isSuperAdmin(req.user) &&
+            Number(user.company_id) !== Number(req.user.company_id)
+        ) {
+            throw new HttpError(404, "User not found");
+        }
 
         return res.status(200).json({
             success: true,
@@ -133,69 +123,66 @@ const createUser = async (req, res) => {
             throw new HttpError(403, "Admin access is required");
         }
 
-        const name = String(req.body.name || "").trim();
-        const mobile = String(req.body.mobile || "").trim();
-        const email = String(req.body.email || "").trim().toLowerCase();
-        const password = req.body.password;
-        const userType = normalizeType(req.body.user_type, req.user);
+        const body = req.body || {};
+        if (
+            Object.prototype.hasOwnProperty.call(body, "user_type") &&
+            body.user_type !== "COMPANY_USER"
+        ) {
+            throw new HttpError(400, "Only COMPANY_USER accounts can be created");
+        }
 
-        if (isMissing(name) || isMissing(mobile) || isMissing(password)) {
+        const name = String(body.name || "").trim();
+        const mobile = requireValidMobile(body.mobile);
+        const email = requireValidEmail(body.email);
+        const password = body.password;
+
+        if (isMissing(name) || typeof password !== "string" || !password) {
             throw new HttpError(400, "Name, mobile and password are required");
         }
 
         assertStrongPassword(password);
 
-        let companyId = req.body.company_id;
-
-        if (isSuperAdmin(req.user)) {
-            if (userType !== "SUPER_ADMIN" && isMissing(companyId)) {
-                throw new HttpError(400, "company_id is required");
-            }
-        } else {
-            companyId = req.user.company_id;
-
-            if (!companyId) {
-                throw new HttpError(400, "User is not assigned to a company");
-            }
+        const companyId = req.user.company_id;
+        if (!companyId) {
+            throw new HttpError(400, "User is not assigned to a company");
         }
 
-        if (companyId) {
-            const company = await companyModel.getById(companyId);
+        const company = await companyModel.getById(companyId);
 
-            if (!company || Number(company.status) !== 1) {
-                throw new HttpError(400, "Company not found");
-            }
+        if (!company || Number(company.status) !== 1) {
+            throw new HttpError(400, "Company not found");
         }
 
-        if (email) {
-            const existing = await userModel.findUserByEmail(email);
-
-            if (existing) {
-                throw new HttpError(409, "Email is already registered");
-            }
+        if (await userModel.findDuplicateContact(mobile, email)) {
+            throw new HttpError(409, "Mobile number or email is already registered");
         }
 
         const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
         const id = await userModel.createUser({
-            company_id: companyId || null,
-            user_type: userType,
+            company_id: companyId,
             name,
             mobile,
-            email: email || null,
-            password_hash: passwordHash,
-            status: req.body.status
+            email,
+            password_hash: passwordHash
         });
 
-        await writeAudit(req, "USER_CREATED", "user", id);
+        const created = await userModel.findUserById(id);
+        await writeAudit(
+            req,
+            "USER_CREATE",
+            "user",
+            id,
+            JSON.stringify({ new: auditUser(created) })
+        );
 
         return res.status(201).json({
             success: true,
             message: "User created successfully",
             id,
-            user: publicUser(await userModel.findUserById(id))
+            user: publicUser(created)
         });
     } catch (error) {
-        return sendError(res, error);
+        return rejectDuplicateContact(res, error);
     }
 };
 
@@ -205,108 +192,184 @@ const updateUser = async (req, res) => {
             throw new HttpError(403, "Admin access is required");
         }
 
+        const body = req.body || {};
+        const forbiddenFields = ["user_type", "company_id", "status"];
+        if (forbiddenFields.some((field) => Object.hasOwn(body, field))) {
+            throw new HttpError(400, "user_type, company_id, and status cannot be changed here");
+        }
+
+        const allowedFields = ["name", "mobile", "email", "password"];
+        const unknownFields = Object.keys(body).filter(
+            (field) => !allowedFields.includes(field)
+        );
+        if (unknownFields.length > 0) {
+            throw new HttpError(400, "Request contains unsupported user fields");
+        }
+
         const existing = await userModel.findUserById(req.params.id);
 
         if (!existing) {
             throw new HttpError(404, "User not found");
         }
 
-        assertCanManage(req.user, existing);
+        const isSelf = Number(existing.id) === Number(req.user.id);
+        assertCanManageUser(req.user, existing, {
+            allowSelfProfileEdit:
+                isSelf &&
+                Object.keys(body).every((field) =>
+                    ["name", "password"].includes(field)
+                )
+        });
 
-        const name = String(req.body.name || existing.name).trim();
-        const mobile = String(req.body.mobile || existing.mobile).trim();
-        const email = String(
-            req.body.email !== undefined ? req.body.email : existing.email || ""
-        )
-            .trim()
-            .toLowerCase();
-        const userType = normalizeType(
-            req.body.user_type || existing.user_type,
-            req.user
-        );
-
-        let companyId = existing.company_id;
-
-        if (isSuperAdmin(req.user) && req.body.company_id !== undefined) {
-            companyId = req.body.company_id;
+        if (isSelf && Object.keys(body).some((field) => ["mobile", "email"].includes(field))) {
+            throw new HttpError(400, "You can only change your own name and password");
         }
 
-        if (email && email !== existing.email) {
-            const duplicate = await userModel.findUserByEmail(email);
+        if (Object.keys(body).length === 0) {
+            throw new HttpError(400, "At least one editable field is required");
+        }
 
-            if (duplicate && Number(duplicate.id) !== Number(existing.id)) {
-                throw new HttpError(409, "Email is already registered");
+        const updates = {};
+
+        if (Object.prototype.hasOwnProperty.call(body, "name")) {
+            updates.name = String(body.name || "").trim();
+            if (!updates.name) {
+                throw new HttpError(400, "Name is required");
             }
         }
 
-        let passwordHash = null;
-
-        if (req.body.password) {
-            assertStrongPassword(req.body.password);
-            passwordHash = await bcrypt.hash(req.body.password, BCRYPT_ROUNDS);
+        if (Object.prototype.hasOwnProperty.call(body, "mobile")) {
+            updates.mobile = requireValidMobile(body.mobile);
         }
 
-        await userModel.updateUser(existing.id, {
-            company_id: companyId,
-            user_type: userType,
-            name,
-            mobile,
-            email: email || null,
-            status: req.body.status !== undefined ? req.body.status : existing.status,
-            password_hash: passwordHash
-        });
-
-        if (passwordHash) {
-            await userModel.bumpTokenVersion(existing.id);
+        if (Object.prototype.hasOwnProperty.call(body, "email")) {
+            updates.email = requireValidEmail(body.email);
         }
 
-        await writeAudit(req, "USER_UPDATED", "user", existing.id);
+        if (updates.mobile !== undefined || updates.email !== undefined) {
+            const mobile = updates.mobile ?? existing.mobile;
+            const email = updates.email !== undefined ? updates.email : existing.email;
+            if (
+                await userModel.findDuplicateContact(
+                    mobile,
+                    email,
+                    existing.id
+                )
+            ) {
+                throw new HttpError(409, "Mobile number or email is already registered");
+            }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(body, "password")) {
+            if (typeof body.password !== "string" || !body.password) {
+                throw new HttpError(400, "A valid password is required");
+            }
+            assertStrongPassword(body.password);
+            updates.password_hash = await bcrypt.hash(
+                body.password,
+                BCRYPT_ROUNDS
+            );
+        }
+
+        await userModel.updateUser(existing.id, updates);
+
+        const updated = await userModel.findUserById(existing.id);
+        await writeAudit(
+            req,
+            "USER_UPDATE",
+            "user",
+            existing.id,
+            JSON.stringify({
+                old: auditUser(existing),
+                new: auditUser(updated)
+            })
+        );
 
         return res.status(200).json({
             success: true,
             message: "User updated successfully",
-            user: publicUser(await userModel.findUserById(existing.id))
+            user: publicUser(updated)
+        });
+    } catch (error) {
+        return rejectDuplicateContact(res, error);
+    }
+};
+
+const updateUserStatus = async (req, res, status) => {
+    try {
+        if (!isAdmin(req.user)) {
+            throw new HttpError(403, "Admin access is required");
+        }
+
+        if (status !== 0 && status !== 1) {
+            throw new HttpError(400, "Status must be 0 or 1");
+        }
+
+        const existing = await userModel.findUserById(req.params.id);
+
+        if (!existing) {
+            throw new HttpError(404, "User not found");
+        }
+
+        assertCanManageUser(req.user, existing);
+
+        if (Number(existing.status) === status) {
+            return res.status(200).json({
+                success: true,
+                message: status === 1 ? "User already active" : "User already inactive",
+                user: publicUser(existing)
+            });
+        }
+
+        await userModel.setUserStatus(existing.id, status);
+        const updated = await userModel.findUserById(existing.id);
+        await writeAudit(
+            req,
+            status === 0 ? "USER_DEACTIVATE" : "USER_ACTIVATE",
+            "user",
+            existing.id,
+            JSON.stringify({
+                old: auditUser(existing),
+                new: auditUser(updated)
+            })
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: status === 0 ? "User deactivated successfully" : "User activated successfully",
+            user: publicUser(updated)
         });
     } catch (error) {
         return sendError(res, error);
     }
 };
 
-const deactivateUser = async (req, res) => {
-    try {
-        if (!isAdmin(req.user)) {
-            throw new HttpError(403, "Admin access is required");
-        }
+const deactivateUser = (req, res) => updateUserStatus(req, res, 0);
 
-        const existing = await userModel.findUserById(req.params.id);
-
-        if (!existing) {
-            throw new HttpError(404, "User not found");
-        }
-
-        assertCanManage(req.user, existing);
-
-        if (Number(existing.id) === Number(req.user.id)) {
-            throw new HttpError(400, "You cannot deactivate your own account");
-        }
-
-        if (Number(existing.status) !== 1) {
-            return res.status(200).json({
-                success: true,
-                message: "User already inactive"
-            });
-        }
-
-        await userModel.deactivateUser(existing.id);
-        await writeAudit(req, "USER_DEACTIVATED", "user", existing.id);
-
-        return res.status(200).json({
-            success: true,
-            message: "User deactivated successfully"
+const setUserStatus = (req, res) => {
+    const bodyFields = Object.keys(req.body || {});
+    if (bodyFields.some((field) => field !== "status")) {
+        return res.status(400).json({
+            success: false,
+            message: "Only status can be changed on this endpoint"
         });
-    } catch (error) {
-        return sendError(res, error);
     }
+
+    const rawStatus = req.body?.status;
+    const status =
+        rawStatus === 0 || rawStatus === "0"
+            ? 0
+            : rawStatus === 1 || rawStatus === "1"
+              ? 1
+              : NaN;
+    if (status !== 0 && status !== 1) {
+        return res.status(400).json({
+            success: false,
+            message: "Status must be 0 or 1"
+        });
+    }
+
+    return updateUserStatus(req, res, status);
 };
 
 module.exports = {
@@ -314,5 +377,6 @@ module.exports = {
     getUserById,
     createUser,
     updateUser,
-    deactivateUser
+    deactivateUser,
+    setUserStatus
 };

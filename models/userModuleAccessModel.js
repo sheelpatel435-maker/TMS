@@ -13,90 +13,80 @@ const getUserAccess = async (userId, pagination) => {
     });
 };
 
-const createUserAccess = async (data) => {
-    const flags = [
-        data.can_view,
-        data.can_create,
-        data.can_update,
-        data.can_delete,
-        data.can_approve,
-        data.can_export,
-        data.can_dispatch,
-        data.can_close
-    ].map((value) => (value ? 1 : 0));
+const ACCESS_COLUMNS = `id, user_id, module_id, can_view, can_create, can_update,
+                        can_delete, can_approve, can_export, can_dispatch, can_close,
+                        created_at, updated_at`;
 
-    const [result] = await db.execute(
-        `INSERT INTO user_module_access
-        (
-            user_id,
-            module_id,
-            can_view,
-            can_create,
-            can_update,
-            can_delete,
-            can_approve,
-            can_export,
-            can_dispatch,
-            can_close
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            can_view = VALUES(can_view),
-            can_create = VALUES(can_create),
-            can_update = VALUES(can_update),
-            can_delete = VALUES(can_delete),
-            can_approve = VALUES(can_approve),
-            can_export = VALUES(can_export),
-            can_dispatch = VALUES(can_dispatch),
-            can_close = VALUES(can_close)`,
-        [
-            data.user_id,
-            data.module_id,
-            ...flags
-        ]
+const getAllUserAccess = async (userId, connection = db) => {
+    const [rows] = await connection.execute(
+        `SELECT ${ACCESS_COLUMNS}
+         FROM user_module_access
+         WHERE user_id = ?
+         ORDER BY module_id ASC`,
+        [userId]
     );
 
-    if (result.insertId) {
-        return result.insertId;
+    return rows;
+};
+
+const replaceUserAccess = async (userId, modules) => {
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+        const oldAccess = await getAllUserAccess(userId, connection);
+
+        await connection.execute(
+            `DELETE FROM user_module_access
+             WHERE user_id = ?`,
+            [userId]
+        );
+
+        for (const module of modules) {
+            const enabled = new Set(module.actions);
+            const flags = [
+                "can_view",
+                "can_create",
+                "can_update",
+                "can_delete",
+                "can_approve",
+                "can_export",
+                "can_dispatch",
+                "can_close"
+            ].map((action) => (enabled.has(action) ? 1 : 0));
+
+            await connection.execute(
+                `INSERT INTO user_module_access
+                (
+                    user_id,
+                    module_id,
+                    can_view,
+                    can_create,
+                    can_update,
+                    can_delete,
+                    can_approve,
+                    can_export,
+                    can_dispatch,
+                    can_close
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [userId, module.module_id, ...flags]
+            );
+        }
+
+        const newAccess = await getAllUserAccess(userId, connection);
+        await connection.commit();
+        return { oldAccess, newAccess };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
     }
-
-    const [rows] = await db.execute(
-        `SELECT id
-         FROM user_module_access
-         WHERE user_id = ? AND module_id = ?
-         LIMIT 1`,
-        [data.user_id, data.module_id]
-    );
-
-    return rows[0]?.id;
-};
-
-const getUserAccessById = async (id) => {
-    const [rows] = await db.execute(
-        `SELECT id, user_id, module_id, can_view, can_create, can_update, can_delete,
-                can_approve, can_export, can_dispatch, can_close, created_at, updated_at
-         FROM user_module_access
-         WHERE id = ?
-         LIMIT 1`,
-        [id]
-    );
-
-    return rows[0] || null;
-};
-
-const deleteUserAccess = async (id) => {
-    const [result] = await db.execute(
-        `DELETE FROM user_module_access
-         WHERE id = ?`,
-        [id]
-    );
-
-    return result.affectedRows;
 };
 
 module.exports = {
     getUserAccess,
-    getUserAccessById,
-    createUserAccess,
-    deleteUserAccess
+    getAllUserAccess,
+    replaceUserAccess
 };

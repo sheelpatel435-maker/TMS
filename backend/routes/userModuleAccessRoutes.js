@@ -7,9 +7,7 @@ const { requireAdmin } = require("../../utils/roles");
 
 router.use(authMiddleware);
 
-router.get("/", controller.getUserAccess);
-router.post("/", requireAdmin, controller.createUserAccess);
-router.delete("/:id", requireAdmin, controller.deleteUserAccess);
 router.get("/:userId", controller.getUserAccess);
+router.put("/:userId", requireAdmin, controller.replaceUserAccess);
 
 module.exports = router;
