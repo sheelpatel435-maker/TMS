@@ -135,19 +135,21 @@ const insertItem = async (connection, companyId, invoiceId, item) => {
             trip_id,
             bilty_id,
             description,
+            hsn_sac,
             freight,
             detention,
             hamali,
             other_charges,
             item_total
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             companyId,
             invoiceId,
             item.trip_id || null,
             item.bilty_id || null,
             item.description || null,
+            item.hsn_sac || "996791",
             item.freight || 0,
             item.detention || 0,
             item.hamali || 0,

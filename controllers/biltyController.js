@@ -80,6 +80,83 @@ const reserveBilty = async (req, res) => {
     }
 };
 
+const expandRange = (from, to) => {
+    const startRaw = String(from).trim();
+    const endRaw = String(to).trim();
+    const startMatch = startRaw.match(/^(.*?)(\d+)$/);
+    const endMatch = endRaw.match(/^(.*?)(\d+)$/);
+
+    if (!startMatch || !endMatch || startMatch[1] !== endMatch[1]) {
+        throw new HttpError(400, "from and to must share the same prefix and end with digits");
+    }
+
+    const prefix = startMatch[1];
+    const startNum = Number(startMatch[2]);
+    const endNum = Number(endMatch[2]);
+    const width = Math.max(startMatch[2].length, endMatch[2].length);
+
+    if (!Number.isSafeInteger(startNum) || !Number.isSafeInteger(endNum) || endNum < startNum) {
+        throw new HttpError(400, "Invalid bilty number range");
+    }
+
+    if (endNum - startNum + 1 > 200) {
+        throw new HttpError(400, "Reserve at most 200 bilty numbers at once");
+    }
+
+    const numbers = [];
+    for (let value = startNum; value <= endNum; value += 1) {
+        numbers.push(`${prefix}${String(value).padStart(width, "0")}`);
+    }
+    return numbers;
+};
+
+const reserveBiltyRange = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const { from, to, bilty_numbers } = req.body || {};
+        let numbers = [];
+
+        if (Array.isArray(bilty_numbers) && bilty_numbers.length) {
+            numbers = [...new Set(bilty_numbers.map((value) => String(value).trim()).filter(Boolean))];
+        } else if (!isMissing(from) && !isMissing(to)) {
+            numbers = expandRange(from, to);
+        } else {
+            throw new HttpError(400, "Provide from/to or bilty_numbers[]");
+        }
+
+        if (numbers.length > 200) {
+            throw new HttpError(400, "Reserve at most 200 bilty numbers at once");
+        }
+
+        const reserved = [];
+        const skipped = [];
+
+        for (const bilty_number of numbers) {
+            const existing = await biltyModel.findByNumber(companyId, bilty_number);
+            if (existing) {
+                skipped.push(bilty_number);
+                continue;
+            }
+
+            const id = await biltyModel.createBilty(companyId, {
+                bilty_number,
+                status: "RESERVED"
+            });
+            reserved.push({ id, bilty_number });
+            await writeAudit(req, "BILTY_RESERVED", "bilty", id);
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: `Reserved ${reserved.length} bilty number(s)`,
+            reserved,
+            skipped
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 const createBilty = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
@@ -219,6 +296,7 @@ module.exports = {
     getBilties,
     getBiltyById,
     reserveBilty,
+    reserveBiltyRange,
     createBilty,
     updateBilty,
     deactivateBilty

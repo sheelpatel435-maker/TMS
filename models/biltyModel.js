@@ -1,10 +1,12 @@
 const db = require("../config/db");
 const { paginatedSelect } = require("../utils/pagination");
 const { buildListWhere } = require("../utils/queryFilters");
+const { roundMoney } = require("../utils/validation");
 
 const BILTY_COLUMNS = `id, company_id, bilty_number, client_id, status, trip_id,
-                  goods_description, weight_kg, packages, consignor, consignee,
-                  pickup_location, drop_location, created_at, updated_at`;
+                  goods_description, weight_kg, packages, freight_amount,
+                  consignor, consignee, pickup_location, drop_location,
+                  created_at, updated_at`;
 
 const getBilties = async (companyId, pagination, filters = {}) => {
     const { where, params } = buildListWhere({
@@ -58,12 +60,13 @@ const createBilty = async (companyId, data) => {
             goods_description,
             weight_kg,
             packages,
+            freight_amount,
             consignor,
             consignee,
             pickup_location,
             drop_location
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             companyId,
             data.bilty_number,
@@ -73,6 +76,7 @@ const createBilty = async (companyId, data) => {
             data.goods_description || null,
             data.weight_kg || null,
             data.packages || null,
+            data.freight_amount == null ? null : roundMoney(data.freight_amount),
             data.consignor || null,
             data.consignee || null,
             data.pickup_location || null,
@@ -92,6 +96,7 @@ const updateBilty = async (id, companyId, data) => {
              goods_description = ?,
              weight_kg = ?,
              packages = ?,
+             freight_amount = ?,
              consignor = ?,
              consignee = ?,
              pickup_location = ?,
@@ -104,6 +109,7 @@ const updateBilty = async (id, companyId, data) => {
             data.goods_description || null,
             data.weight_kg || null,
             data.packages || null,
+            data.freight_amount == null ? null : roundMoney(data.freight_amount),
             data.consignor || null,
             data.consignee || null,
             data.pickup_location || null,

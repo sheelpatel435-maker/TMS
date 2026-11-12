@@ -3,13 +3,14 @@ const { paginatedSelect } = require("../utils/pagination");
 const { toTinyIntStatus, firstPresent } = require("../utils/validation");
 const { buildListWhere } = require("../utils/queryFilters");
 
-const CLIENT_COLUMNS = `id, company_id, name, mobile, email, address, gst_number, status, created_at, updated_at`;
+const CLIENT_COLUMNS = `id, company_id, name, mobile, email, billing_email, address,
+                        gst_number, state_code, payment_terms, status, created_at, updated_at`;
 
 const getClients = async (companyId, pagination, filters = {}) => {
     const { where, params } = buildListWhere({
         companyId,
         filters,
-        searchColumns: ["name", "mobile", "gst_number"],
+        searchColumns: ["name", "mobile", "gst_number", "billing_email"],
         numericStatus: true
     });
 
@@ -42,18 +43,24 @@ const createClient = async (companyId, data) => {
             name,
             mobile,
             email,
+            billing_email,
             address,
             gst_number,
+            state_code,
+            payment_terms,
             status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             companyId,
             firstPresent(data.name, data.client_name),
             data.mobile || null,
             data.email || null,
+            data.billing_email || data.email || null,
             data.address || null,
             data.gst_number || null,
+            data.state_code || data.state || null,
+            data.payment_terms || null,
             toTinyIntStatus(data.status, 1)
         ]
     );
@@ -67,16 +74,22 @@ const updateClient = async (id, companyId, data) => {
          SET name = ?,
              mobile = ?,
              email = ?,
+             billing_email = ?,
              address = ?,
              gst_number = ?,
+             state_code = ?,
+             payment_terms = ?,
              status = ?
          WHERE id = ? AND company_id = ?`,
         [
             firstPresent(data.name, data.client_name),
             data.mobile || null,
             data.email || null,
+            data.billing_email || data.email || null,
             data.address || null,
             data.gst_number || null,
+            data.state_code || data.state || null,
+            data.payment_terms || null,
             toTinyIntStatus(data.status, 1),
             id,
             companyId

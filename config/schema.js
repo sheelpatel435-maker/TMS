@@ -89,6 +89,39 @@ const ensureSchema = async () => {
         "drop_location",
         "VARCHAR(150) NULL DEFAULT NULL"
     );
+    await addColumnIfMissing(
+        "bilties",
+        "freight_amount",
+        "DECIMAL(12,2) NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "clients",
+        "billing_email",
+        "VARCHAR(150) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "clients",
+        "state_code",
+        "VARCHAR(10) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "clients",
+        "payment_terms",
+        "VARCHAR(100) NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "trip_settlements",
+        "carry_forward_amount",
+        "DECIMAL(12,2) NOT NULL DEFAULT 0.00"
+    );
+
+    await addColumnIfMissing(
+        "invoice_items",
+        "hsn_sac",
+        "VARCHAR(20) NULL DEFAULT '996791'"
+    );
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS revoked_tokens (

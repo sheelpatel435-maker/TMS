@@ -3,6 +3,7 @@ const { paginatedSelect } = require("../utils/pagination");
 const { HttpError } = require("../utils/httpError");
 const { assertTransition } = require("../utils/statusTransitions");
 const { roundMoney } = require("../utils/validation");
+const tripBalanceLedgerModel = require("./tripBalanceLedgerModel");
 
 const computeTotals = async (companyId, tripId) => {
     const [advanceRows] = await db.execute(
@@ -23,15 +24,32 @@ const computeTotals = async (companyId, tripId) => {
         [companyId, tripId]
     );
 
+    const [tripRows] = await db.execute(
+        `SELECT driver_id
+         FROM trips
+         WHERE id = ? AND company_id = ?
+         LIMIT 1`,
+        [tripId, companyId]
+    );
+
+    const driverId = tripRows[0]?.driver_id || null;
+    const carryForward = driverId
+        ? await tripBalanceLedgerModel.getLatestBalance(companyId, driverId)
+        : 0;
+
     const totalAdvance = roundMoney(advanceRows[0].total_advance);
     const totalExpenses = roundMoney(expenseRows[0].total_expenses);
-    const balanceAmount = roundMoney(totalAdvance - totalExpenses);
+    const carryForwardAmount = roundMoney(carryForward);
+    // BRD: Advance + Carry-Forward Credit − Approved Expenses = Closing Balance
+    const balanceAmount = roundMoney(totalAdvance + carryForwardAmount - totalExpenses);
 
     return {
         total_advance: totalAdvance,
+        carry_forward_amount: carryForwardAmount,
         total_expenses: totalExpenses,
         final_amount: totalExpenses,
-        balance_amount: balanceAmount
+        balance_amount: balanceAmount,
+        driver_id: driverId
     };
 };
 
@@ -47,17 +65,19 @@ const createSettlement = async (data) => {
             company_id,
             trip_id,
             total_advance,
+            carry_forward_amount,
             total_expenses,
             final_amount,
             balance_amount,
             status,
             remarks
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             data.company_id,
             data.trip_id,
             totals.total_advance,
+            totals.carry_forward_amount,
             totals.total_expenses,
             totals.final_amount,
             totals.balance_amount,
