@@ -4,7 +4,8 @@
   "private": true,
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js"
+    "start": "node backend/server.js",
+    "build:ui": "npm --prefix frontend run build && node -e \"const fs=require('fs');const path=require('path');const cp=(s,d)=>{fs.mkdirSync(path.dirname(d),{recursive:true});fs.copyFileSync(s,d)};const dist='frontend/dist';const assets=fs.readdirSync(path.join(dist,'assets'));['ui','backend/public'].forEach(root=>{fs.mkdirSync(path.join(root,'assets'),{recursive:true});cp(path.join(dist,'index.html'),path.join(root,'index.html'));assets.forEach(f=>cp(path.join(dist,'assets',f),path.join(root,'assets',f)));});console.log('UI published to ui/ and backend/public');\" "
   },
   "engines": {
     "node": ">=20"
