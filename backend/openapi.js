@@ -402,7 +402,14 @@ const spec = {
 
 const resources = [
     ["Vehicles", "/api/vehicle-types", "vehicle type", { name: "Truck" }, ["name"]],
-    ["Vehicles", "/api/vehicles", "vehicle", { vehicle_type_id: 1, registration_no: "MH12AB1234", capacity: 1000 }, ["vehicle_type_id", "registration_no"]],
+    ["Vehicles", "/api/vehicles", "vehicle", {
+        vehicle_type_id: 1,
+        registration_no: "MH12AB1234",
+        make: "Tata",
+        model: "LPT",
+        capacity: 1000,
+        ownership: "OWNED"
+    }, ["vehicle_type_id", "registration_no", "make", "model", "ownership"]],
     ["Drivers", "/api/drivers", "driver", { name: "Ramesh", mobile: "9000000001" }, ["name", "mobile"]],
     ["Helpers", "/api/helpers", "helper", { name: "Suresh", mobile: "9000000002" }, ["name", "mobile"]],
     ["Clients", "/api/clients", "client", { name: "Acme Corp", mobile: "8111111111", gst_number: "27AAAAA0000A1Z5" }, ["name"]],
@@ -430,6 +437,11 @@ spec.paths["/api/vehicle-documents"] = {
                             document_number: { type: "string" },
                             issue_date: { type: "string", format: "date" },
                             expiry_date: { type: "string", format: "date" },
+                            verification_status: {
+                                type: "string",
+                                enum: ["PENDING", "VERIFIED", "REJECTED"],
+                                readOnly: true
+                            },
                             file: { type: "string", format: "binary" }
                         }
                     }
@@ -437,6 +449,20 @@ spec.paths["/api/vehicle-documents"] = {
             }
         },
         responses: created
+    })
+};
+
+spec.paths["/api/vehicle-documents/types"] = {
+    get: secured("Vehicles", "List built-in and company-configured vehicle document types"),
+    post: secured("Vehicles", "Add a company-specific vehicle document type", {
+        requestBody: jsonBody({ name: "EMISSION_CERTIFICATE" }, ["name"]),
+        responses: created
+    })
+};
+
+spec.paths["/api/vehicle-documents/types/{id}"] = {
+    delete: secured("Vehicles", "Deactivate a company-specific document type", {
+        parameters: [idParam]
     })
 };
 
@@ -460,6 +486,22 @@ spec.paths["/api/vehicle-documents/{id}"] = {
         }
     }),
     delete: secured("Vehicles", "Deactivate a vehicle document", { parameters: [idParam] })
+};
+
+spec.paths["/api/vehicle-documents/{id}/verification"] = {
+    patch: secured("Vehicles", "Verify or reject a vehicle document; requires Vehicles approval access", {
+        parameters: [idParam],
+        requestBody: jsonBody(
+            { verification_status: "VERIFIED" },
+            ["verification_status"]
+        )
+    })
+};
+
+spec.paths["/api/vehicles/{id}/trip-history"] = {
+    get: secured("Vehicles", "Completed trip vehicle/driver/helper snapshots", {
+        parameters: [idParam, ...listParams]
+    })
 };
 
 spec.paths["/api/driver-documents"] = {

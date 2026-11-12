@@ -45,6 +45,45 @@ const fileFilter = (_req, file, cb) => {
     return cb(null, true);
 };
 
+const validateUploadedFile = async (file) => {
+    if (!file) return;
+
+    try {
+        const handle = await fs.promises.open(file.path, "r");
+        const header = Buffer.alloc(12);
+        try {
+            await handle.read(header, 0, header.length, 0);
+        } finally {
+            await handle.close();
+        }
+
+        const bytes = header.subarray(0, header.length);
+        const signatures = {
+            "image/jpeg": bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+            "image/png": bytes.subarray(0, 8).equals(
+                Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+            ),
+            "image/webp":
+                bytes.toString("ascii", 0, 4) === "RIFF" &&
+                bytes.toString("ascii", 8, 12) === "WEBP",
+            "application/pdf": bytes.toString("ascii", 0, 5) === "%PDF-"
+        };
+
+        if (signatures[file.mimetype]) return;
+        throw new HttpError(400, "Uploaded file content does not match its file type");
+    } catch (error) {
+        try {
+            await fs.promises.unlink(file.path);
+        } catch (cleanupError) {
+            if (cleanupError.code !== "ENOENT") {
+                console.error("UPLOAD CLEANUP ERROR:", cleanupError);
+            }
+        }
+        if (error instanceof HttpError) throw error;
+        throw error;
+    }
+};
+
 const upload = multer({
     storage,
     fileFilter,
@@ -55,6 +94,7 @@ const publicFileUrl = (filename) => `/api/files/${filename}`;
 
 module.exports = {
     upload,
+    validateUploadedFile,
     publicFileUrl,
     uploadDir
 };

@@ -51,14 +51,18 @@ async function loadVehicles() {
 
         vehicleList.innerHTML = data.vehicles.map(vehicle => `
             <tr>
-                <td>${vehicle.id}</td>
-                <td>${vehicle.company_id}</td>
- <td>${getVehicleType(vehicle.vehicle_type_id)}</td>
-                <td>${vehicle.registration_no}</td>
-                <td>${vehicle.capacity ?? "-"}</td>
-                <td>${vehicle.status === 1 ? "Active" : "Inactive"}</td>
-                <td>${vehicle.created_at}</td>
-                <td>${vehicle.updated_at}</td>
+                <td>${escapeHtml(vehicle.id)}</td>
+                <td>${escapeHtml(vehicle.company_id)}</td>
+ <td>${escapeHtml(getVehicleType(vehicle.vehicle_type_id))}</td>
+                <td>${escapeHtml(vehicle.registration_no)}</td>
+                <td>${escapeHtml(vehicle.make ?? "-")}</td>
+                <td>${escapeHtml(vehicle.model ?? "-")}</td>
+                <td>${escapeHtml(vehicle.capacity ?? "-")}</td>
+                <td>${escapeHtml(vehicle.ownership ?? "-")}</td>
+                <td>${escapeHtml(vehicle.status === 1 ? "Active" : vehicle.status === 2 ? "Maintenance" : "Inactive")}</td>
+                <td>${escapeHtml(vehicle.availability_status ?? "-")}</td>
+                <td>${escapeHtml(vehicle.created_at)}</td>
+                <td>${escapeHtml(vehicle.updated_at)}</td>
             </tr>
         `).join("");
 
@@ -68,6 +72,16 @@ async function loadVehicles() {
         document.getElementById("vehicleMessage").innerText =
             "Unable to connect to server";
     }
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    })[character]);
 }
 
 async function addVehicle() {
@@ -86,6 +100,10 @@ async function addVehicle() {
 
     const capacity =
         document.getElementById("capacity").value.trim();
+    const ownership =
+        document.getElementById("ownership").value.trim();
+    const make = document.getElementById("make").value.trim();
+    const model = document.getElementById("model").value.trim();
 
     const status =
         document.getElementById("status").value;
@@ -104,6 +122,14 @@ async function addVehicle() {
             "Registration Number is required";
         return;
     }
+    if (!ownership) {
+        vehicleMessage.innerText = "Ownership is required";
+        return;
+    }
+    if (!make || !model) {
+        vehicleMessage.innerText = "Make and model are required";
+        return;
+    }
 
     try {
         const response = await fetch("/api/vehicles", {
@@ -115,7 +141,10 @@ async function addVehicle() {
             body: JSON.stringify({
                 vehicle_type_id: Number(vehicleTypeId),
                 registration_no: registrationNo,
+                make,
+                model,
                 capacity: capacity === "" ? null : Number(capacity),
+                ownership,
                 status: Number(status)
             })
         });
@@ -128,6 +157,9 @@ async function addVehicle() {
             document.getElementById("vehicle_type_id").value = "";
             document.getElementById("registration_no").value = "";
             document.getElementById("capacity").value = "";
+            document.getElementById("ownership").value = "";
+            document.getElementById("make").value = "";
+            document.getElementById("model").value = "";
             document.getElementById("status").value = "1";
 
             await loadVehicles();

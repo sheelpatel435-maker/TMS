@@ -1,5 +1,5 @@
 const MODULE_ACTIONS = Object.freeze({
-    Vehicles: Object.freeze(["can_view", "can_create", "can_update", "can_delete"]),
+    Vehicles: Object.freeze(["can_view", "can_create", "can_update", "can_delete", "can_approve"]),
     "Drivers & Helpers": Object.freeze(["can_view", "can_create", "can_update", "can_delete"]),
     Bilty: Object.freeze(["can_view", "can_create", "can_update", "can_delete"]),
     Trips: Object.freeze([

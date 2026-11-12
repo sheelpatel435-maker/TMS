@@ -100,8 +100,8 @@ const updateTrip = async (id, companyId, data) => {
     return result.affectedRows;
 };
 
-const updateTripStatus = async (id, companyId, status) => {
-    const [result] = await db.execute(
+const updateTripStatus = async (id, companyId, status, executor = db) => {
+    const [result] = await executor.execute(
         `UPDATE trips
          SET status = ?
          WHERE id = ? AND company_id = ?`,
@@ -111,10 +111,48 @@ const updateTripStatus = async (id, companyId, status) => {
     return result.affectedRows;
 };
 
+const recordCompletedTripAssignment = async (trip, executor = db) => {
+    await executor.execute(
+        `INSERT IGNORE INTO vehicle_trip_assignment_history
+        (
+            company_id,
+            trip_id,
+            vehicle_id,
+            driver_id,
+            helper_id,
+            trip_start_date,
+            trip_end_date,
+            completed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [
+            trip.company_id,
+            trip.id,
+            trip.vehicle_id,
+            trip.driver_id,
+            trip.helper_id || null,
+            trip.start_date || null,
+            trip.end_date || null
+        ]
+    );
+};
+
+const getVehicleTripAssignmentHistory = async (companyId, vehicleId, pagination) =>
+    paginatedSelect(db, {
+        table: "vehicle_trip_assignment_history",
+        columns: `id, company_id, trip_id, vehicle_id, driver_id, helper_id,
+                  trip_start_date, trip_end_date, completed_at`,
+        where: "company_id = ? AND vehicle_id = ?",
+        params: [companyId, vehicleId],
+        pagination
+    });
+
 module.exports = {
     getTrips,
     getTripById,
     createTrip,
     updateTrip,
-    updateTripStatus
+    updateTripStatus,
+    recordCompletedTripAssignment,
+    getVehicleTripAssignmentHistory
 };

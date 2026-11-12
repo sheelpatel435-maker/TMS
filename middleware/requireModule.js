@@ -10,7 +10,7 @@ const MODULE_ALIASES = {
     "Vehicle Assignments": "Vehicles"
 };
 
-const requireModule = (moduleName, flag = "can_view") => {
+const requireModule = (moduleName, flag = "can_view", options = {}) => {
     const allowedFlags = [
         "can_view",
         "can_create",
@@ -24,7 +24,7 @@ const requireModule = (moduleName, flag = "can_view") => {
 
     return async (req, res, next) => {
         try {
-            if (isAdmin(req.user)) {
+            if (isAdmin(req.user) && options.allowAdminBypass !== false) {
                 return next();
             }
 

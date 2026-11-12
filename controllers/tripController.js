@@ -7,6 +7,7 @@ const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { parseListFilters } = require("../utils/queryFilters");
 const { assertTransition, isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
+const { withTransaction } = require("../utils/transaction");
 
 const assertLoadFitsVehicle = (vehicle, bilty) => {
     if (!vehicle || !bilty) {
@@ -232,14 +233,25 @@ const updateTripStatus = async (req, res) => {
 
         assertTransition("trip", trip.status, status);
 
-        await tripModel.updateTripStatus(req.params.id, companyId, status);
-        await writeAudit(
-            req,
-            status === "CANCELLED" ? "TRIP_CANCELLED" : "TRIP_STATUS_UPDATED",
-            "trip",
-            req.params.id,
-            `${trip.status} -> ${status}`
-        );
+        await withTransaction(async (connection) => {
+            await tripModel.updateTripStatus(
+                req.params.id,
+                companyId,
+                status,
+                connection
+            );
+            if (status === "COMPLETED") {
+                await tripModel.recordCompletedTripAssignment(trip, connection);
+            }
+            await writeAudit(
+                req,
+                status === "CANCELLED" ? "TRIP_CANCELLED" : "TRIP_STATUS_UPDATED",
+                "trip",
+                req.params.id,
+                `${trip.status} -> ${status}`,
+                { companyId, connection, required: true }
+            );
+        });
 
         return res.status(200).json({
             success: true,

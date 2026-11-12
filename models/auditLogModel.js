@@ -1,8 +1,8 @@
 const db = require("../config/db");
 const { paginatedSelect } = require("../utils/pagination");
 
-const insertAudit = async (data) => {
-    await db.execute(
+const insertAudit = async (data, executor = db) => {
+    await executor.execute(
         `INSERT INTO audit_logs
         (company_id, user_id, action, entity_type, entity_id, description, ip_address)
         VALUES (?, ?, ?, ?, ?, ?, ?)`,

@@ -22,9 +22,12 @@ const writeAudit = async (
             description: description ? String(description).slice(0, 500) : null,
            
             ip_address: req.ip ? String(req.ip).slice(0, 45) : null
-        });
+        }, context.connection);
     } catch (error) {
         console.error("AUDIT LOG ERROR:", error);
+        if (context.required) {
+            throw error;
+        }
     }
 };
 

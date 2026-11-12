@@ -5,31 +5,64 @@ const authMiddleware = require("../../middleware/authMiddleware");
 const requireModule = require("../../middleware/requireModule");
 const { upload } = require("../../middleware/upload");
 const controller = require("../../controllers/vehicleDocumentController");
+const { requireAdminVehicleUser, requireVehicleId } = require("../../middleware/vehicleAccess");
 
 router.use(authMiddleware);
+router.use(requireAdminVehicleUser);
+const enforceVehicleAccess = { allowAdminBypass: false };
 
-router.get("/", requireModule("Vehicles", "can_view"), controller.getVehicleDocuments);
+router.get(
+    "/types",
+    requireModule("Vehicles", "can_view", enforceVehicleAccess),
+    controller.getVehicleDocumentTypes
+);
+router.post(
+    "/types",
+    requireModule("Vehicles", "can_create", enforceVehicleAccess),
+    controller.createVehicleDocumentType
+);
+router.delete(
+    "/types/:id",
+    requireVehicleId,
+    requireModule("Vehicles", "can_update", enforceVehicleAccess),
+    controller.deactivateVehicleDocumentType
+);
+router.get("/", requireModule("Vehicles", "can_view", enforceVehicleAccess), controller.getVehicleDocuments);
 router.post(
     "/",
-    requireModule("Vehicles", "can_create"),
+    requireModule("Vehicles", "can_create", enforceVehicleAccess),
     upload.single("file"),
     controller.createVehicleDocument
 );
 router.put(
     "/:id",
-    requireModule("Vehicles", "can_update"),
+    requireVehicleId,
+    requireModule("Vehicles", "can_update", enforceVehicleAccess),
     upload.single("file"),
     controller.updateVehicleDocument
 );
+router.patch(
+    "/:id/verification",
+    requireVehicleId,
+    requireModule("Vehicles", "can_approve", enforceVehicleAccess),
+    controller.verifyVehicleDocument
+);
 router.delete(
     "/:id",
-    requireModule("Vehicles", "can_delete"),
+    requireVehicleId,
+    requireModule("Vehicles", "can_update", enforceVehicleAccess),
     controller.deactivateVehicleDocument
 );
-router.get("/:vehicleId", requireModule("Vehicles", "can_view"), controller.getVehicleDocuments);
+router.get(
+    "/:vehicleId",
+    requireVehicleId,
+    requireModule("Vehicles", "can_view", enforceVehicleAccess),
+    controller.getVehicleDocuments
+);
 router.post(
     "/:vehicleId",
-    requireModule("Vehicles", "can_create"),
+    requireVehicleId,
+    requireModule("Vehicles", "can_create", enforceVehicleAccess),
     upload.single("file"),
     controller.createVehicleDocument
 );
