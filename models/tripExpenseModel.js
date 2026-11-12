@@ -15,16 +15,18 @@ const createExpense = async (data) => {
             approved_amount,
             receipt_url,
             remarks,
+            submitted_by,
             status
         )
-        VALUES (?, ?, ?, ?, NULL, ?, ?, 'PENDING')`,
+        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 'PENDING')`,
         [
             data.company_id,
             data.trip_id,
             data.expense_type,
             data.requested_amount,
             data.receipt_url,
-            data.remarks
+            data.remarks,
+            data.submitted_by || null
         ]
     );
 

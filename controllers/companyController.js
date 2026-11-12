@@ -1,6 +1,15 @@
+const bcrypt = require("bcryptjs");
 const companyModel = require("../models/companyModel");
+const userModel = require("../models/userModel");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isSuperAdmin } = require("../utils/roles");
+const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
+const {
+    requireValidMobile,
+    requireValidEmail
+} = require("../utils/userValidation");
+const { withTransaction } = require("../utils/transaction");
+const { isMissing } = require("../utils/validation");
 
 const listCompanies = async (req, res) => {
     try {
@@ -60,10 +69,29 @@ const createCompany = async (req, res) => {
         assertSuperAdmin(req);
 
         const name = String(req.body.name || "").trim();
+        const adminName = String(req.body.admin_name || "").trim();
+        const adminMobile = req.body.admin_mobile;
+        const adminEmail = req.body.admin_email;
+        const adminPassword = req.body.admin_password;
 
         if (!name) {
             throw new HttpError(400, "Company name is required");
         }
+
+        if (
+            isMissing(adminName) ||
+            isMissing(adminMobile) ||
+            isMissing(adminPassword)
+        ) {
+            throw new HttpError(
+                400,
+                "admin_name, admin_mobile and admin_password are required to create Company Admin"
+            );
+        }
+
+        assertStrongPassword(adminPassword);
+        const mobile = requireValidMobile(adminMobile);
+        const email = requireValidEmail(adminEmail);
 
         const existing = await companyModel.findByName(name);
 
@@ -71,13 +99,36 @@ const createCompany = async (req, res) => {
             throw new HttpError(409, "Company already exists");
         }
 
-        const companyId = await companyModel.createCompany(name);
-        const company = await companyModel.getById(companyId);
+        if (await userModel.findDuplicateContact(mobile, email)) {
+            throw new HttpError(409, "Admin mobile or email is already registered");
+        }
+
+        const { company, adminId } = await withTransaction(async (connection) => {
+            const companyId = await companyModel.createCompany(name, connection);
+            const passwordHash = await bcrypt.hash(adminPassword, BCRYPT_ROUNDS);
+            const userId = await userModel.createUser(
+                {
+                    company_id: companyId,
+                    user_type: "COMPANY_ADMIN",
+                    name: adminName,
+                    mobile,
+                    email,
+                    password_hash: passwordHash
+                },
+                connection
+            );
+
+            return {
+                company: await companyModel.getById(companyId, connection),
+                adminId: userId
+            };
+        });
 
         return res.status(201).json({
             success: true,
-            message: "Company created successfully",
-            company
+            message: "Company and Company Admin created successfully",
+            company,
+            admin_user_id: adminId
         });
     } catch (error) {
         return sendError(res, error);

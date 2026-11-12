@@ -49,10 +49,22 @@ const assertSecure = (req) => {
 
 const normalizeMobile = (value) => String(value || "").replace(/[\s\-+]/g, "");
 
-const isAccountUsable = (user) =>
-    Boolean(user) &&
-    Number(user.status) === 1 &&
-    (!user.company_id || Number(user.company_status) === 1);
+const isAccountUsable = (user) => {
+    if (!user || Number(user.status) !== 1) {
+        return false;
+    }
+
+    if (user.user_type === "SUPER_ADMIN") {
+        return user.company_id === null || user.company_id === undefined;
+    }
+
+    return (
+        user.company_id !== null &&
+        user.company_id !== undefined &&
+        Number(user.company_id) > 0 &&
+        Number(user.company_status) === 1
+    );
+};
 
 const signAccessToken = (user) => {
     const jti = crypto.randomBytes(16).toString("hex");

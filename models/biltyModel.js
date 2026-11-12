@@ -68,7 +68,7 @@ const createBilty = async (companyId, data) => {
             companyId,
             data.bilty_number,
             data.client_id || null,
-            data.status || "CREATED",
+            data.status || "DRAFT",
             data.trip_id || null,
             data.goods_description || null,
             data.weight_kg || null,
@@ -99,7 +99,7 @@ const updateBilty = async (id, companyId, data) => {
          WHERE id = ? AND company_id = ?`,
         [
             data.client_id || null,
-            data.status || "CREATED",
+            data.status || "DRAFT",
             data.trip_id || null,
             data.goods_description || null,
             data.weight_kg || null,
@@ -121,7 +121,7 @@ const deactivateBilty = async (id, companyId) => {
         `UPDATE bilties
          SET status = 'CANCELLED'
          WHERE id = ? AND company_id = ?
-         AND status <> 'COMPLETED'`,
+         AND status NOT IN ('USED', 'COMPLETED')`,
         [id, companyId]
     );
 

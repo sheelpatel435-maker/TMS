@@ -23,8 +23,9 @@ const listAll = async () => {
     return rows;
 };
 
-const getById = async (id) => {
-    const [rows] = await db.execute(
+const getById = async (id, connection = null) => {
+    const executor = connection || db;
+    const [rows] = await executor.execute(
         `SELECT ${columns}
          FROM companies
          WHERE id = ?
@@ -47,8 +48,9 @@ const findByName = async (name) => {
     return rows[0] || null;
 };
 
-const createCompany = async (name) => {
-    const [result] = await db.execute(
+const createCompany = async (name, connection = null) => {
+    const executor = connection || db;
+    const [result] = await executor.execute(
         `INSERT INTO companies (name, status)
          VALUES (?, 1)`,
         [name]

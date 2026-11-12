@@ -62,11 +62,34 @@ const createTrip = async (companyId, data) => {
             data.destination,
             data.start_date || null,
             data.end_date || null,
-            data.status || "CREATED"
+            data.status || "DRAFT"
         ]
     );
 
     return result.insertId;
+};
+
+const getAssignedTrips = async (companyId, { driverId = null, helperId = null }, pagination) => {
+    const where = ["company_id = ?"];
+    const params = [companyId];
+
+    if (driverId) {
+        where.push("driver_id = ?");
+        params.push(driverId);
+    } else if (helperId) {
+        where.push("helper_id = ?");
+        params.push(helperId);
+    } else {
+        where.push("1 = 0");
+    }
+
+    return paginatedSelect(db, {
+        table: "trips",
+        columns: TRIP_COLUMNS,
+        where: where.join(" AND "),
+        params,
+        pagination
+    });
 };
 
 const updateTrip = async (id, companyId, data) => {
@@ -150,6 +173,7 @@ const getVehicleTripAssignmentHistory = async (companyId, vehicleId, pagination)
 module.exports = {
     getTrips,
     getTripById,
+    getAssignedTrips,
     createTrip,
     updateTrip,
     updateTripStatus,

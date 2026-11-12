@@ -109,7 +109,7 @@ const createTrip = async (req, res) => {
 
         const id = await tripModel.createTrip(companyId, {
             ...req.body,
-            status: status || "CREATED"
+            status: status || "DRAFT"
         });
 
         await saveStops(companyId, id, stops);
@@ -193,8 +193,8 @@ const deactivateTrip = async (req, res) => {
             });
         }
 
-        if (trip.status === "COMPLETED") {
-            throw new HttpError(400, "Completed trips cannot be cancelled");
+        if (["COMPLETED", "CLOSED"].includes(trip.status)) {
+            throw new HttpError(400, "Completed/closed trips cannot be cancelled");
         }
 
         assertTransition("trip", trip.status, "CANCELLED");
@@ -240,7 +240,7 @@ const updateTripStatus = async (req, res) => {
                 status,
                 connection
             );
-            if (status === "COMPLETED") {
+            if (["COMPLETED", "CLOSED"].includes(status)) {
                 await tripModel.recordCompletedTripAssignment(trip, connection);
             }
             await writeAudit(

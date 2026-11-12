@@ -1,10 +1,13 @@
 const tripSettlementModel = require("../models/tripSettlementModel");
+const tripModel = require("../models/tripModel");
+const tripBalanceLedgerModel = require("../models/tripBalanceLedgerModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
 const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
+const { withTransaction } = require("../utils/transaction");
 
 const createSettlement = async (req, res) => {
     try {
@@ -88,16 +91,51 @@ const updateStatus = async (req, res) => {
             CARRIED_FORWARD: "CARRY_FORWARD"
         };
         const mapped = aliases[status] || status;
+        const companyId = resolveCompanyId(req);
 
         if (!isAllowedStatus("settlement", mapped)) {
             throw new HttpError(400, "Invalid settlement status");
         }
 
-        await tripSettlementModel.updateStatus(
+        const settlement = await tripSettlementModel.getSettlementById(
             req.params.id,
-            resolveCompanyId(req),
-            mapped
+            companyId
         );
+
+        if (!settlement) {
+            throw new HttpError(404, "Settlement not found");
+        }
+
+        await withTransaction(async (connection) => {
+            await tripSettlementModel.updateStatus(
+                req.params.id,
+                companyId,
+                mapped
+            );
+
+            if (mapped === "CARRY_FORWARD") {
+                const trip = await tripModel.getTripById(
+                    settlement.trip_id,
+                    companyId
+                );
+                const balance = Number(settlement.balance_amount) || 0;
+                const entryType = balance >= 0 ? "CARRY_FORWARD" : "DEBIT";
+
+                await tripBalanceLedgerModel.createEntry(
+                    {
+                        company_id: companyId,
+                        trip_id: settlement.trip_id,
+                        driver_id: trip?.driver_id || null,
+                        settlement_id: settlement.id,
+                        entry_type: entryType,
+                        amount: Math.abs(balance),
+                        remarks: settlement.remarks || "Carry forward from settlement",
+                        created_by: req.user.id
+                    },
+                    connection
+                );
+            }
+        });
 
         await writeAudit(req, "SETTLEMENT_STATUS_UPDATED", "trip_settlement", req.params.id);
 

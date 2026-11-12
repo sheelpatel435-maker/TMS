@@ -5,6 +5,9 @@ const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
 const { resolveCompanyId } = require("../utils/companyScope");
 const { writeAudit } = require("../utils/audit");
+const { withTransaction } = require("../utils/transaction");
+const { createStaffLoginUser } = require("../utils/staffAccount");
+const { requireValidMobile } = require("../utils/userValidation");
 
 const requireCompany = (req) => resolveCompanyId(req);
 
@@ -63,31 +66,60 @@ const getDriverById = async (req, res) => {
 const createDriver = async (req, res) => {
     try {
         const companyId = requireCompany(req);
-        const { name, mobile, license_number } = req.body;
+        const { name, mobile, license_number, password } = req.body;
 
         if (isMissing(name) || isMissing(mobile)) {
             throw new HttpError(400, "Name and mobile are required");
         }
 
-        const id = await driverModel.createDriver(companyId, req.body);
+        if (isMissing(password)) {
+            throw new HttpError(
+                400,
+                "Initial password is required for driver mobile login"
+            );
+        }
+
+        const cleanMobile = requireValidMobile(mobile);
+
+        const { id, userId } = await withTransaction(async (connection) => {
+            const login = await createStaffLoginUser({
+                companyId,
+                userType: "DRIVER",
+                name,
+                mobile: cleanMobile,
+                email: req.body.email,
+                password,
+                connection
+            });
+
+            const driverId = await driverModel.createDriver(
+                companyId,
+                {
+                    ...req.body,
+                    mobile: cleanMobile,
+                    user_id: login.userId
+                },
+                connection
+            );
+
+            return { id: driverId, userId: login.userId };
+        });
+
         await writeAudit(req, "DRIVER_CREATED", "driver", id);
 
         if (!isMissing(license_number)) {
-            await driverDocumentModel.createDriverDocument(
-                companyId,
-                id,
-                {
-                    document_type: "LICENSE",
-                    document_number: license_number,
-                    status: 1
-                }
-            );
+            await driverDocumentModel.createDriverDocument(companyId, id, {
+                document_type: "LICENSE",
+                document_number: license_number,
+                status: 1
+            });
         }
 
         return res.status(201).json({
             success: true,
-            message: "Driver created successfully",
-            id
+            message: "Driver created successfully with mobile login",
+            id,
+            user_id: userId
         });
     } catch (error) {
         return sendError(res, error);
@@ -106,7 +138,10 @@ const updateDriver = async (req, res) => {
         const updated = await driverModel.updateDriver(
             req.params.id,
             companyId,
-            req.body
+            {
+                ...req.body,
+                mobile: requireValidMobile(mobile)
+            }
         );
 
         if (!updated) {
@@ -127,10 +162,7 @@ const updateDriver = async (req, res) => {
 const deactivateDriver = async (req, res) => {
     try {
         const companyId = requireCompany(req);
-        const updated = await driverModel.deactivateDriver(
-            req.params.id,
-            companyId
-        );
+        const updated = await driverModel.deactivateDriver(req.params.id, companyId);
 
         if (!updated) {
             throw new HttpError(404, "Driver not found");

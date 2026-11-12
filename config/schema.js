@@ -224,6 +224,61 @@ const ensureSchema = async () => {
             )
         `);
     }
+
+    await addColumnIfMissing(
+        "drivers",
+        "user_id",
+        "BIGINT UNSIGNED NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "helpers",
+        "user_id",
+        "BIGINT UNSIGNED NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
+        "trip_expenses",
+        "submitted_by",
+        "BIGINT UNSIGNED NULL DEFAULT NULL"
+    );
+
+    // Expand enums toward BRD lifecycles (keeps legacy values)
+    await db.query(`
+        ALTER TABLE bilties
+        MODIFY COLUMN status ENUM(
+            'RESERVED','DRAFT','CREATED','CONFIRMED','USED','COMPLETED','CANCELLED'
+        ) NOT NULL DEFAULT 'DRAFT'
+    `);
+
+    await db.query(`
+        ALTER TABLE trips
+        MODIFY COLUMN status ENUM(
+            'DRAFT','CREATED','BILTY_LINKED','READY_FOR_DISPATCH',
+            'DISPATCHED','IN_TRANSIT','DELIVERED','FINAL_REPORT_SUBMITTED',
+            'VERIFIED','COMPLETED','CLOSED','CANCELLED'
+        ) NOT NULL DEFAULT 'DRAFT'
+    `);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS trip_balance_ledger (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            trip_id BIGINT UNSIGNED NOT NULL,
+            driver_id BIGINT UNSIGNED NULL,
+            settlement_id BIGINT UNSIGNED NULL,
+            entry_type ENUM('CREDIT','DEBIT','CARRY_FORWARD') NOT NULL,
+            amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            balance_after DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            reference_trip_id BIGINT UNSIGNED NULL,
+            remarks VARCHAR(500) NULL,
+            created_by BIGINT UNSIGNED NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_ledger_company (company_id),
+            KEY idx_ledger_trip (trip_id),
+            KEY idx_ledger_driver (driver_id)
+        )
+    `);
 };
 
 module.exports = {

@@ -5,6 +5,9 @@ const { firstPresent, isMissing } = require("../utils/validation");
 const { resolveCompanyId } = require("../utils/companyScope");
 const { parseListFilters } = require("../utils/queryFilters");
 const { writeAudit } = require("../utils/audit");
+const { withTransaction } = require("../utils/transaction");
+const { createStaffLoginUser } = require("../utils/staffAccount");
+const { requireValidMobile } = require("../utils/userValidation");
 
 const getHelpers = async (req, res) => {
     try {
@@ -47,7 +50,7 @@ const createHelper = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
         const name = firstPresent(req.body.name, req.body.full_name);
-        const { mobile } = req.body;
+        const { mobile, password } = req.body;
 
         if (isMissing(name)) {
             throw new HttpError(400, "Helper name is required");
@@ -57,16 +60,47 @@ const createHelper = async (req, res) => {
             throw new HttpError(400, "Mobile number is required");
         }
 
-        const id = await helperModel.createHelper(companyId, {
-            ...req.body,
-            name
+        if (isMissing(password)) {
+            throw new HttpError(
+                400,
+                "Initial password is required for helper mobile login"
+            );
+        }
+
+        const cleanMobile = requireValidMobile(mobile);
+
+        const { id, userId } = await withTransaction(async (connection) => {
+            const login = await createStaffLoginUser({
+                companyId,
+                userType: "HELPER",
+                name,
+                mobile: cleanMobile,
+                email: req.body.email,
+                password,
+                connection
+            });
+
+            const helperId = await helperModel.createHelper(
+                companyId,
+                {
+                    ...req.body,
+                    name,
+                    mobile: cleanMobile,
+                    user_id: login.userId
+                },
+                connection
+            );
+
+            return { id: helperId, userId: login.userId };
         });
+
         await writeAudit(req, "HELPER_CREATED", "helper", id);
 
         return res.status(201).json({
             success: true,
-            message: "Helper created successfully",
-            id
+            message: "Helper created successfully with mobile login",
+            id,
+            user_id: userId
         });
     } catch (error) {
         return sendError(res, error);
@@ -85,7 +119,8 @@ const updateHelper = async (req, res) => {
 
         const updated = await helperModel.updateHelper(req.params.id, companyId, {
             ...req.body,
-            name
+            name,
+            mobile: requireValidMobile(mobile)
         });
 
         if (!updated) {

@@ -32,6 +32,7 @@ const invoicePaymentDeductionRoutes = require("./routes/invoicePaymentDeductionR
 const reportRoutes = require("./routes/reportRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
 const documentExpiryRoutes = require("./routes/documentExpiryRoutes");
+const mobileRoutes = require("./routes/mobileRoutes");
 const authController = require("../controllers/authController");
 const dashboardController = require("../controllers/dashboardController");
 const fileController = require("../controllers/fileController");
@@ -172,6 +173,7 @@ app.use("/api/invoice-payment-deductions", invoicePaymentDeductionRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/documents", documentExpiryRoutes);
+app.use("/api/mobile", mobileRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 

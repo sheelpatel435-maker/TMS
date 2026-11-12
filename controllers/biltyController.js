@@ -5,8 +5,11 @@ const { isMissing } = require("../utils/validation");
 const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { parseListFilters } = require("../utils/queryFilters");
 const { writeAudit } = require("../utils/audit");
-
-const ALLOWED_STATUSES = ["RESERVED", "CREATED", "CANCELLED", "COMPLETED"];
+const {
+    assertTransition,
+    isAllowedStatus,
+    normalizeStatus
+} = require("../utils/statusTransitions");
 
 const getBilties = async (req, res) => {
     try {
@@ -45,6 +48,38 @@ const getBiltyById = async (req, res) => {
     }
 };
 
+const reserveBilty = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const { bilty_number } = req.body;
+
+        if (isMissing(bilty_number)) {
+            throw new HttpError(400, "Bilty number is required");
+        }
+
+        const existing = await biltyModel.findByNumber(companyId, bilty_number);
+
+        if (existing) {
+            throw new HttpError(409, "Bilty number already exists");
+        }
+
+        const id = await biltyModel.createBilty(companyId, {
+            bilty_number,
+            status: "RESERVED"
+        });
+
+        await writeAudit(req, "BILTY_RESERVED", "bilty", id);
+
+        return res.status(201).json({
+            success: true,
+            message: "Bilty number reserved successfully",
+            id
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 const createBilty = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
@@ -54,10 +89,14 @@ const createBilty = async (req, res) => {
             throw new HttpError(400, "Bilty number is required");
         }
 
-        const biltyStatus = status || "CREATED";
+        const biltyStatus = normalizeStatus("bilty", status || "DRAFT");
 
-        if (!ALLOWED_STATUSES.includes(biltyStatus)) {
+        if (!isAllowedStatus("bilty", biltyStatus)) {
             throw new HttpError(400, "Invalid bilty status");
+        }
+
+        if (!["DRAFT", "CREATED", "CONFIRMED", "RESERVED"].includes(biltyStatus)) {
+            throw new HttpError(400, "New bilty must start as RESERVED or DRAFT");
         }
 
         const existing = await biltyModel.findByNumber(companyId, bilty_number);
@@ -90,20 +129,43 @@ const updateBilty = async (req, res) => {
         const companyId = resolveCompanyId(req);
         const { client_id, trip_id, status } = req.body;
 
-        if (status && !ALLOWED_STATUSES.includes(status)) {
-            throw new HttpError(400, "Invalid bilty status");
+        const existing = await biltyModel.getBiltyById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Bilty not found");
+        }
+
+        let nextStatus = existing.status;
+
+        if (status) {
+            nextStatus = normalizeStatus("bilty", status);
+
+            if (!isAllowedStatus("bilty", nextStatus)) {
+                throw new HttpError(400, "Invalid bilty status");
+            }
+
+            assertTransition("bilty", existing.status, nextStatus);
         }
 
         await assertOwned("clients", client_id, companyId, "Client");
         await assertOwned("trips", trip_id, companyId, "Trip");
 
-        const updated = await biltyModel.updateBilty(req.params.id, companyId, req.body);
+        const updated = await biltyModel.updateBilty(req.params.id, companyId, {
+            ...req.body,
+            status: nextStatus
+        });
 
         if (!updated) {
             throw new HttpError(404, "Bilty not found");
         }
 
-        await writeAudit(req, "BILTY_UPDATED", "bilty", req.params.id);
+        await writeAudit(
+            req,
+            "BILTY_UPDATED",
+            "bilty",
+            req.params.id,
+            status ? `${existing.status} -> ${nextStatus}` : null
+        );
 
         return res.status(200).json({
             success: true,
@@ -123,8 +185,8 @@ const deactivateBilty = async (req, res) => {
             throw new HttpError(404, "Bilty not found");
         }
 
-        if (bilty.status === "COMPLETED") {
-            throw new HttpError(400, "Completed bilty cannot be cancelled");
+        if (["USED", "COMPLETED"].includes(bilty.status)) {
+            throw new HttpError(400, "Used/completed bilty cannot be cancelled");
         }
 
         if (bilty.status === "CANCELLED") {
@@ -133,6 +195,8 @@ const deactivateBilty = async (req, res) => {
                 message: "Bilty already cancelled"
             });
         }
+
+        assertTransition("bilty", bilty.status, "CANCELLED");
 
         const updated = await biltyModel.deactivateBilty(req.params.id, companyId);
 
@@ -154,6 +218,7 @@ const deactivateBilty = async (req, res) => {
 module.exports = {
     getBilties,
     getBiltyById,
+    reserveBilty,
     createBilty,
     updateBilty,
     deactivateBilty

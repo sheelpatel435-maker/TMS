@@ -180,14 +180,29 @@ const markMobileVerified = async (id) => {
     );
 };
 
-const createUser = async (data) => {
-    const [result] = await db.execute(
+const createUser = async (data, connection = null) => {
+    const executor = connection || db;
+    const userType = data.user_type || "COMPANY_USER";
+    const allowedTypes = [
+        "SUPER_ADMIN",
+        "COMPANY_ADMIN",
+        "COMPANY_USER",
+        "DRIVER",
+        "HELPER"
+    ];
+
+    if (!allowedTypes.includes(userType)) {
+        throw new Error(`Invalid user_type: ${userType}`);
+    }
+
+    const [result] = await executor.execute(
         `INSERT INTO users
         (company_id, user_type, name, mobile, email, password_hash,
          password_changed_at, status)
-        VALUES (?, 'COMPANY_USER', ?, ?, ?, ?, CURRENT_TIMESTAMP, 1)`,
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 1)`,
         [
-            data.company_id,
+            data.company_id || null,
+            userType,
             data.name,
             data.mobile,
             data.email || null,

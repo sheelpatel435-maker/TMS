@@ -41,7 +41,8 @@ const createExpense = async (req, res) => {
             expense_type,
             requested_amount: parsedAmount,
             receipt_url: receipt_url || null,
-            remarks: remarks || null
+            remarks: remarks || null,
+            submitted_by: req.user.id
         });
 
         await writeAudit(req, "EXPENSE_CREATED", "trip_expense", expenseId);
