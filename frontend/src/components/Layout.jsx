@@ -5,6 +5,7 @@ const links = [
   { to: "/", label: "Dashboard" },
   { to: "/companies", label: "Companies", superOnly: true },
   { to: "/users", label: "Users", adminOnly: true },
+  { to: "/vehicles", label: "Vehicles" },
   { to: "/drivers", label: "Drivers" },
   { to: "/helpers", label: "Helpers" },
   { to: "/bilties", label: "Bilty" },

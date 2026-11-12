@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Companies from "./pages/Companies";
 import Users from "./pages/Users";
+import Vehicles from "./pages/Vehicles";
 import Drivers from "./pages/Drivers";
 import Helpers from "./pages/Helpers";
 import Bilties from "./pages/Bilties";
@@ -52,6 +53,7 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+        <Route path="vehicles" element={<Vehicles />} />
         <Route path="drivers" element={<Drivers />} />
         <Route path="helpers" element={<Helpers />} />
         <Route path="bilties" element={<Bilties />} />

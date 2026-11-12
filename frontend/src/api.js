@@ -47,9 +47,9 @@ async function refreshAccessToken() {
   return data.token;
 }
 
-export async function api(path, { method = "GET", body, auth = true, retry = true } = {}) {
+export async function api(path, { method = "GET", body, auth = true, retry = true, formData } = {}) {
   const headers = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (body !== undefined && !formData) headers["Content-Type"] = "application/json";
   if (auth && getToken()) headers.Authorization = `Bearer ${getToken()}`;
 
   let res;
@@ -57,7 +57,11 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
     res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined
+      body: formData
+        ? formData
+        : body !== undefined
+          ? JSON.stringify(body)
+          : undefined
     });
   } catch {
     throw new Error(
@@ -69,7 +73,7 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
 
   if (res.status === 401 && auth && retry) {
     await refreshAccessToken();
-    return api(path, { method, body, auth, retry: false });
+    return api(path, { method, body, auth, retry: false, formData });
   }
 
   if (!res.ok || data?.success === false) {
@@ -96,6 +100,34 @@ export const endpoints = {
   createHelper: (body) => api("/api/helpers", { method: "POST", body }),
   clients: () => api("/api/clients?limit=100"),
   vehicles: () => api("/api/vehicles?limit=100"),
+  createVehicle: (body) => api("/api/vehicles", { method: "POST", body }),
+  updateVehicle: (id, body) => api(`/api/vehicles/${id}`, { method: "PUT", body }),
+  vehicleTripHistory: (id) => api(`/api/vehicles/${id}/trip-history?limit=50`),
+  vehicleTypes: () => api("/api/vehicle-types?limit=100"),
+  createVehicleType: (body) => api("/api/vehicle-types", { method: "POST", body }),
+  vehicleDocuments: (vehicleId) =>
+    api(`/api/vehicle-documents/${vehicleId}?limit=100`),
+  vehicleDocumentTypes: () => api("/api/vehicle-documents/types"),
+  createVehicleDocumentType: (body) =>
+    api("/api/vehicle-documents/types", { method: "POST", body }),
+  createVehicleDocument: (vehicleId, formData) =>
+    api(`/api/vehicle-documents/${vehicleId}`, {
+      method: "POST",
+      formData
+    }),
+  verifyVehicleDocument: (id, body) =>
+    api(`/api/vehicle-documents/${id}/verification`, {
+      method: "PATCH",
+      body
+    }),
+  assignments: () => api("/api/vehicle-assignments?limit=100"),
+  createAssignment: (body) =>
+    api("/api/vehicle-assignments", { method: "POST", body }),
+  closeAssignment: (id) =>
+    api(`/api/vehicle-assignments/${id}/close`, { method: "PATCH", body: {} }),
+  expiringDocuments: () => api("/api/documents/expiring?limit=50"),
+  fileUrl: (path) =>
+    path?.startsWith("http") ? path : `${API_BASE}${path || ""}`,
   bilties: () => api("/api/bilties?limit=100"),
   reserveBilty: (body) => api("/api/bilties/reserve", { method: "POST", body }),
   createBilty: (body) => api("/api/bilties", { method: "POST", body }),
