@@ -55,6 +55,22 @@ const ensureSchema = async () => {
     );
 
     await addColumnIfMissing(
+        "vehicles",
+        "make",
+        "VARCHAR(100) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "vehicles",
+        "model",
+        "VARCHAR(100) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "vehicles",
+        "ownership",
+        "VARCHAR(50) NULL DEFAULT NULL"
+    );
+
+    await addColumnIfMissing(
         "bilties",
         "goods_description",
         "VARCHAR(255) NULL DEFAULT NULL"
