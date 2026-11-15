@@ -37,6 +37,7 @@ const authController = require("../controllers/authController");
 const dashboardController = require("../controllers/dashboardController");
 const fileController = require("../controllers/fileController");
 const authMiddleware = require("../middleware/authMiddleware");
+const rejectMobileDeskAccess = require("../middleware/rejectMobileDeskAccess");
 const accessLog = require("../middleware/accessLog");
 const swaggerUi = require("swagger-ui-express");
 const openapi = require("./openapi");
@@ -136,20 +137,24 @@ app.get("/api", (_req, res) => {
 
 app.get("/api/files/:filename", authMiddleware, fileController.downloadFile);
 
-app.use("/api/modules", moduleRoutes);
-app.use("/api/user-module-access", userModuleAccessRoutes);
-app.use("/api/vehicle-types", vehicleTypeRoutes);
-app.use("/api/vehicles", vehicleRoutes);
-app.use("/api/vehicle-documents", vehicleDocumentRoutes);
-app.use("/api/drivers", driverRoutes);
-app.use("/api/driver-documents", driverDocumentRoutes);
-app.use("/api/helpers", helperRoutes);
-app.use("/api/helper-documents", helperDocumentRoutes);
-app.use("/api/vehicle-assignments", vehicleAssignmentRoutes);
-app.use("/api/clients", clientRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/companies", companyRoutes);
-app.use("/api/users", userRoutes);
+app.use("/api/mobile", mobileRoutes);
+
+const deskOnly = [authMiddleware, rejectMobileDeskAccess];
+
+app.use("/api/modules", ...deskOnly, moduleRoutes);
+app.use("/api/user-module-access", ...deskOnly, userModuleAccessRoutes);
+app.use("/api/vehicle-types", ...deskOnly, vehicleTypeRoutes);
+app.use("/api/vehicles", vehicleRoutes);
+app.use("/api/vehicle-documents", ...deskOnly, vehicleDocumentRoutes);
+app.use("/api/drivers", ...deskOnly, driverRoutes);
+app.use("/api/driver-documents", ...deskOnly, driverDocumentRoutes);
+app.use("/api/helpers", ...deskOnly, helperRoutes);
+app.use("/api/helper-documents", ...deskOnly, helperDocumentRoutes);
+app.use("/api/vehicle-assignments", ...deskOnly, vehicleAssignmentRoutes);
+app.use("/api/clients", ...deskOnly, clientRoutes);
+app.use("/api/companies", ...deskOnly, companyRoutes);
+app.use("/api/users", ...deskOnly, userRoutes);
 app.post("/api/register", (_req, res) =>
     res.status(410).json({
         success: false,
@@ -160,20 +165,28 @@ app.post("/api/login", authController.login);
 app.post("/api/refresh", authController.refresh);
 app.post("/api/logout", authMiddleware, authController.logout);
 app.get("/api/profile", authMiddleware, authController.profile);
-app.get("/api/dashboard", authMiddleware, dashboardController.getDashboard);
-app.use("/api/bilties", biltyRoutes);
-app.use("/api/trips", tripRoutes);
-app.use("/api/trip-advances", tripAdvanceRoutes);
-app.use("/api/trip-expenses", tripExpenseRoutes);
-app.use("/api/trip-final-reports", tripFinalReportRoutes);
-app.use("/api/trip-settlements", tripSettlementRoutes);
-app.use("/api/invoices", invoiceRoutes);
-app.use("/api/invoice-payments", invoicePaymentRoutes);
-app.use("/api/invoice-payment-deductions", invoicePaymentDeductionRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/audit-logs", auditLogRoutes);
-app.use("/api/documents", documentExpiryRoutes);
-app.use("/api/mobile", mobileRoutes);
+app.get(
+    "/api/dashboard",
+    authMiddleware,
+    rejectMobileDeskAccess,
+    dashboardController.getDashboard
+);
+app.use("/api/bilties", ...deskOnly, biltyRoutes);
+app.use("/api/trips", ...deskOnly, tripRoutes);
+app.use("/api/trip-advances", ...deskOnly, tripAdvanceRoutes);
+app.use("/api/trip-expenses", ...deskOnly, tripExpenseRoutes);
+app.use("/api/trip-final-reports", ...deskOnly, tripFinalReportRoutes);
+app.use("/api/trip-settlements", ...deskOnly, tripSettlementRoutes);
+app.use("/api/invoices", ...deskOnly, invoiceRoutes);
+app.use("/api/invoice-payments", ...deskOnly, invoicePaymentRoutes);
+app.use(
+    "/api/invoice-payment-deductions",
+    ...deskOnly,
+    invoicePaymentDeductionRoutes
+);
+app.use("/api/reports", ...deskOnly, reportRoutes);
+app.use("/api/audit-logs", ...deskOnly, auditLogRoutes);
+app.use("/api/documents", ...deskOnly, documentExpiryRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 

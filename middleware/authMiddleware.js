@@ -22,27 +22,6 @@ const reject = (res, status, message) =>
         message
     });
 
-const readRequestedCompanyId = (req) => {
-    const rawValue =
-        req.headers?.["x-company-id"] ??
-        req.query?.company_id ??
-        req.body?.company_id;
-
-    if (rawValue === undefined || rawValue === null || rawValue === "") {
-        return null;
-    }
-
-    if (
-        (typeof rawValue !== "string" && typeof rawValue !== "number") ||
-        (typeof rawValue === "string" && !/^\d+$/.test(rawValue))
-    ) {
-        return Number.NaN;
-    }
-
-    const value = Number(rawValue);
-    return Number.isSafeInteger(value) && value > 0 ? value : Number.NaN;
-};
-
 const authMiddleware = async (req, res, next) => {
     const token = extractToken(req);
 
@@ -104,36 +83,31 @@ const authMiddleware = async (req, res, next) => {
             mobile: user.mobile,
             name: user.name,
             jti: decoded.jti,
-            token_version: user.token_version
+            token_version: user.token_version,
+            active_company_id: null
         };
 
+        // Tenant comes only from signed session claims — never from client body/query/headers.
         if (isSuperAdmin(req.user)) {
-            const requestedCompanyId = readRequestedCompanyId(req);
-
-            if (Number.isNaN(requestedCompanyId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Company ID must be a positive integer"
-                });
-            }
-
-            if (requestedCompanyId !== null) {
+            const activeCompanyId = Number(decoded.active_company_id);
+            if (
+                Number.isSafeInteger(activeCompanyId) &&
+                activeCompanyId > 0
+            ) {
                 const [rows] = await db.execute(
                     `SELECT id, name, status
                      FROM companies
                      WHERE id = ? AND status = 1
                      LIMIT 1`,
-                    [requestedCompanyId]
+                    [activeCompanyId]
                 );
 
                 if (!rows[0]) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Select an active company"
-                    });
+                    return reject(res, 400, "Selected company is not active");
                 }
 
                 req.user.company_id = rows[0].id;
+                req.user.active_company_id = rows[0].id;
                 req.company = rows[0];
             }
         }

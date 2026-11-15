@@ -11,7 +11,7 @@ router.use(requireAdminVehicleUser);
 
 router.get(
     "/expiring",
-    requireModule("Vehicles", "can_view", { allowAdminBypass: false }),
+    requireModule("Vehicles", "can_view"),
     controller.getExpiringDocuments
 );
 

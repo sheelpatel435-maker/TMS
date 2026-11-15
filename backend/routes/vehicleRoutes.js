@@ -15,32 +15,31 @@ router.use(authMiddleware);
 router.get("/my-vehicle", requireMobileVehicleUser, controller.getMyAssignedVehicle);
 router.use(requireAdminVehicleUser);
 
-const enforceVehicleAccess = { allowAdminBypass: false };
-
-router.get("/", requireModule("Vehicles", "can_view", enforceVehicleAccess), controller.getVehicles);
-router.post("/", requireModule("Vehicles", "can_create", enforceVehicleAccess), controller.createVehicle);
+// COMPANY_ADMIN / SUPER_ADMIN bypass module ACL (BRD); COMPANY_USER still needs Vehicles flags
+router.get("/", requireModule("Vehicles", "can_view"), controller.getVehicles);
+router.post("/", requireModule("Vehicles", "can_create"), controller.createVehicle);
 router.get(
     "/:id/trip-history",
     requireVehicleId,
-    requireModule("Vehicles", "can_view", enforceVehicleAccess),
+    requireModule("Vehicles", "can_view"),
     controller.getVehicleTripHistory
 );
 router.get(
     "/:id",
     requireVehicleId,
-    requireModule("Vehicles", "can_view", enforceVehicleAccess),
+    requireModule("Vehicles", "can_view"),
     controller.getVehicleById
 );
 router.put(
     "/:id",
     requireVehicleId,
-    requireModule("Vehicles", "can_update", enforceVehicleAccess),
+    requireModule("Vehicles", "can_update"),
     controller.updateVehicle
 );
 router.delete(
     "/:id",
     requireVehicleId,
-    requireModule("Vehicles", "can_update", enforceVehicleAccess),
+    requireModule("Vehicles", "can_update"),
     controller.deactivateVehicle
 );
 

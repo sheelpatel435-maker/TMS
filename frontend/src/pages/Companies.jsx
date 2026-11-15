@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { endpoints } from "../api";
+import { endpoints, getStoredUser } from "../api";
+import { useAuth } from "../auth";
 
 const empty = {
   name: "",
@@ -10,10 +11,12 @@ const empty = {
 };
 
 export default function Companies() {
+  const { user, isSuperAdmin, applySession } = useAuth();
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(empty);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const activeCompanyId = user?.company_id || getStoredUser()?.company_id;
 
   const load = () =>
     endpoints
@@ -34,6 +37,21 @@ export default function Companies() {
       setForm(empty);
       setMsg("Company + Company Admin created");
       load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const selectCompany = async (companyId) => {
+    setMsg("");
+    setError("");
+    try {
+      const data = await endpoints.selectCompany({
+        company_id: companyId,
+        refresh_token: localStorage.getItem("tms_refresh")
+      });
+      applySession(data);
+      setMsg(`Company context set to #${companyId}`);
     } catch (err) {
       setError(err.message);
     }
@@ -104,12 +122,18 @@ export default function Companies() {
 
       <div className="card">
         <h3>All companies</h3>
+        <p className="muted">
+          Super Admin must select a company context first. Tenant APIs never trust
+          client-sent company_id — only the signed session.
+          {activeCompanyId ? ` Active company #${activeCompanyId}.` : ""}
+        </p>
         <table className="table">
           <thead>
             <tr>
               <th>ID</th>
               <th>Name</th>
               <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -118,6 +142,19 @@ export default function Companies() {
                 <td>{c.id}</td>
                 <td>{c.name}</td>
                 <td>{Number(c.status) === 1 ? "Active" : "Inactive"}</td>
+                <td>
+                  {isSuperAdmin && Number(c.status) === 1 ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => selectCompany(c.id)}
+                    >
+                      {Number(activeCompanyId) === Number(c.id)
+                        ? "Selected"
+                        : "Use company"}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>

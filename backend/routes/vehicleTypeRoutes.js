@@ -8,12 +8,11 @@ const { requireAdminVehicleUser, requireVehicleId } = require("../../middleware/
 
 router.use(authMiddleware);
 router.use(requireAdminVehicleUser);
-const enforceVehicleAccess = { allowAdminBypass: false };
 
-router.get("/", requireModule("Vehicle Types", "can_view", enforceVehicleAccess), controller.getVehicleTypes);
-router.post("/", requireModule("Vehicle Types", "can_create", enforceVehicleAccess), controller.createVehicleType);
-router.get("/:id", requireVehicleId, requireModule("Vehicle Types", "can_view", enforceVehicleAccess), controller.getVehicleTypeById);
-router.put("/:id", requireVehicleId, requireModule("Vehicle Types", "can_update", enforceVehicleAccess), controller.updateVehicleType);
-router.delete("/:id", requireVehicleId, requireModule("Vehicle Types", "can_update", enforceVehicleAccess), controller.deactivateVehicleType);
+router.get("/", requireModule("Vehicle Types", "can_view"), controller.getVehicleTypes);
+router.post("/", requireModule("Vehicle Types", "can_create"), controller.createVehicleType);
+router.get("/:id", requireVehicleId, requireModule("Vehicle Types", "can_view"), controller.getVehicleTypeById);
+router.put("/:id", requireVehicleId, requireModule("Vehicle Types", "can_update"), controller.updateVehicleType);
+router.delete("/:id", requireVehicleId, requireModule("Vehicle Types", "can_update"), controller.deactivateVehicleType);
 
 module.exports = router;

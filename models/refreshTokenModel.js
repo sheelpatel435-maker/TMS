@@ -4,7 +4,7 @@ const db = require("../config/db");
 const hashToken = (token) =>
     crypto.createHash("sha256").update(token).digest("hex");
 
-const create = async (userId, token, expiresAt, tokenVersion) => {
+const create = async (userId, token, expiresAt, tokenVersion, activeCompanyId = null) => {
     if (
         tokenVersion === null ||
         tokenVersion === undefined ||
@@ -15,9 +15,15 @@ const create = async (userId, token, expiresAt, tokenVersion) => {
 
     await db.execute(
         `INSERT INTO refresh_tokens
-            (user_id, token_hash, expires_at, token_version)
-         VALUES (?, ?, ?, ?)`,
-        [userId, hashToken(token), expiresAt, tokenVersion]
+            (user_id, token_hash, expires_at, token_version, active_company_id)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+            userId,
+            hashToken(token),
+            expiresAt,
+            tokenVersion,
+            activeCompanyId || null
+        ]
     );
 };
 

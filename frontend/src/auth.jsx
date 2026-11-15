@@ -41,6 +41,11 @@ export function AuthProvider({ children }) {
         setUser(null);
         setAuthed(false);
       },
+      applySession(data) {
+        saveSession(data);
+        if (data?.user) setUser(data.user);
+        if (data?.token) setAuthed(true);
+      },
       isSuperAdmin: user?.user_type === "SUPER_ADMIN",
       isAdmin:
         user?.user_type === "SUPER_ADMIN" ||

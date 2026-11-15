@@ -86,6 +86,8 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
 export const endpoints = {
   login: (body) => api("/api/login", { method: "POST", body, auth: false }),
   profile: () => api("/api/profile"),
+  selectCompany: (body) =>
+    api("/api/auth/select-company", { method: "POST", body }),
   dashboard: () => api("/api/dashboard"),
   companies: () => api("/api/companies"),
   createCompany: (body) => api("/api/companies", { method: "POST", body }),

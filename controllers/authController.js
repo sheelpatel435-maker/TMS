@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const db = require("../config/db");
 const userModel = require("../models/userModel");
 const refreshTokenModel = require("../models/refreshTokenModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
@@ -66,24 +67,36 @@ const isAccountUsable = (user) => {
     );
 };
 
+const resolveActiveCompanyId = (user) => {
+    const active = Number(user?.active_company_id);
+    if (Number.isSafeInteger(active) && active > 0) {
+        return active;
+    }
+    return null;
+};
+
 const signAccessToken = (user) => {
     const jti = crypto.randomBytes(16).toString("hex");
+    const activeCompanyId = resolveActiveCompanyId(user);
+    const payload = {
+        id: user.id,
+        company_id: user.company_id,
+        user_type: user.user_type,
+        email: user.email,
+        token_version: Number(user.token_version),
+        jti
+    };
 
-    const token = jwt.sign(
-        {
-            id: user.id,
-            company_id: user.company_id,
-            user_type: user.user_type,
-            email: user.email,
-            token_version: Number(user.token_version),
-            jti
-        },
-        process.env.JWT_SECRET,
-        {
-            algorithm: "HS256",
-            expiresIn: ACCESS_TOKEN_EXPIRES_IN
-        }
-    );
+    // Super Admin tenant context lives only in the signed session claim.
+    if (user.user_type === "SUPER_ADMIN" && activeCompanyId) {
+        payload.active_company_id = activeCompanyId;
+        payload.company_id = activeCompanyId;
+    }
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, {
+        algorithm: "HS256",
+        expiresIn: ACCESS_TOKEN_EXPIRES_IN
+    });
 
     return { token, jti };
 };
@@ -98,7 +111,8 @@ const issueRefreshToken = async (user) => {
         user.id,
         token,
         expiresAt,
-        user.token_version
+        user.token_version,
+        user.user_type === "SUPER_ADMIN" ? resolveActiveCompanyId(user) : null
     );
 
     return { token, expiresAt };
@@ -106,7 +120,10 @@ const issueRefreshToken = async (user) => {
 
 const publicUser = (user) => ({
     id: user.id,
-    company_id: user.company_id,
+    company_id:
+        user.user_type === "SUPER_ADMIN"
+            ? resolveActiveCompanyId(user) || user.company_id || null
+            : user.company_id,
     user_type: user.user_type,
     name: user.name,
     mobile: user.mobile,
@@ -499,6 +516,10 @@ const refresh = async (req, res) => {
             throw new HttpError(401, "Refresh token has been revoked");
         }
 
+        if (user.user_type === "SUPER_ADMIN" && stored.active_company_id) {
+            user.active_company_id = Number(stored.active_company_id);
+        }
+
         const { token } = signAccessToken(user);
         const nextRefresh = await issueRefreshToken(user);
 
@@ -507,8 +528,59 @@ const refresh = async (req, res) => {
             message: "Token refreshed",
             token,
             refresh_token: nextRefresh.token,
-            expires_in: ACCESS_TOKEN_EXPIRES_IN
+            expires_in: ACCESS_TOKEN_EXPIRES_IN,
+            user: publicUser(user)
         });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+// Super Admin picks tenant once; company_id then comes only from the signed session.
+const selectCompany = async (req, res) => {
+    try {
+        if (req.user.user_type !== "SUPER_ADMIN") {
+            throw new HttpError(403, "Only Super Admin can select company context");
+        }
+
+        const companyId = Number(req.body?.company_id);
+        if (!Number.isSafeInteger(companyId) || companyId < 1) {
+            throw new HttpError(400, "company_id must be a positive integer");
+        }
+
+        const [rows] = await db.execute(
+            `SELECT id, name, status
+             FROM companies
+             WHERE id = ? AND status = 1
+             LIMIT 1`,
+            [companyId]
+        );
+
+        if (!rows[0]) {
+            throw new HttpError(404, "Active company not found");
+        }
+
+        const user = await userModel.findAuthById(req.user.id);
+        if (!user || !isAccountUsable(user)) {
+            throw new HttpError(401, "User account is not active");
+        }
+
+        user.active_company_id = rows[0].id;
+
+        if (req.body?.refresh_token) {
+            await refreshTokenModel.revokeByToken(req.body.refresh_token);
+        }
+
+        await auditFor(
+            req,
+            user,
+            "COMPANY_CONTEXT_SELECTED",
+            `Active company set to ${rows[0].id}`
+        );
+
+        return res.status(200).json(
+            await buildLoginResponse(user, `Company context set to ${rows[0].name}`)
+        );
     } catch (error) {
         return sendError(res, error);
     }
@@ -547,6 +619,10 @@ const profile = async (req, res) => {
             throw new HttpError(404, "User not found");
         }
 
+        if (req.user.active_company_id) {
+            user.active_company_id = req.user.active_company_id;
+        }
+
         return res.status(200).json({
             success: true,
             user: publicUser(user)
@@ -575,5 +651,6 @@ module.exports = {
     refresh,
     logout,
     profile,
+    selectCompany,
     createSession
 };

@@ -4,6 +4,7 @@ const { isSuperAdmin } = require("./roles");
 
 const TABLES = {
     vehicles: "vehicles",
+    vehicle_types: "vehicle_types",
     drivers: "drivers",
     helpers: "helpers",
     clients: "clients",
@@ -16,10 +17,11 @@ const TABLES = {
     trip_expenses: "trip_expenses",
     trip_settlements: "trip_settlements",
     trip_final_reports: "trip_final_reports",
-    vehicle_types: "vehicle_types",
     module_definitions: "module_definitions",
     users: "users"
 };
+
+const GLOBAL_TABLES = new Set(["module_definitions"]);
 
 const getById = async (tableKey, id) => {
     const table = TABLES[tableKey];
@@ -49,7 +51,7 @@ const assertOwned = async (tableKey, id, companyId, label) => {
 
     const name = label || tableKey.replace(/_/g, " ");
 
-    if (tableKey === "vehicle_types" || tableKey === "module_definitions") {
+    if (GLOBAL_TABLES.has(tableKey)) {
         const row = await getById(tableKey, id);
 
         if (!row) {
@@ -89,25 +91,21 @@ const assertOwnedUser = async (userId, companyId, { allowSuperAdmin = false } = 
     return user;
 };
 
+/**
+ * Derive tenant from authenticated session only.
+ * Never trust company_id from request body/query/headers.
+ */
 const resolveCompanyId = (req) => {
-    if (isSuperAdmin(req.user)) {
-        const scoped =
-            req.query?.company_id ??
-            req.body?.company_id ??
-            req.user.company_id;
-
-        if (scoped === undefined || scoped === null || scoped === "") {
-            throw new HttpError(400, "company_id is required");
-        }
-
-        return Number(scoped);
-    }
-
     if (!req.user?.company_id) {
-        throw new HttpError(400, "User is not assigned to a company");
+        throw new HttpError(
+            400,
+            isSuperAdmin(req.user)
+                ? "Select a company context first"
+                : "User is not assigned to a company"
+        );
     }
 
-    return req.user.company_id;
+    return Number(req.user.company_id);
 };
 
 module.exports = {

@@ -18,6 +18,7 @@ router.post("/otp/verify", authController.verifyLoginOtp);
 router.post("/password/forgot", authController.forgotPassword);
 router.post("/password/reset", authController.resetPassword);
 router.post("/password/change", authMiddleware, authController.changePassword);
+router.post("/select-company", authMiddleware, authController.selectCompany);
 
 router.get("/profile", authMiddleware, authController.profile);
 
