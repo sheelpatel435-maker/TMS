@@ -6,10 +6,9 @@ const requireModule = require("../../middleware/requireModule");
 const controller = require("../../controllers/reportController");
 
 router.use(authMiddleware);
-router.use(requireModule("Reports", "can_view"));
 
-router.get("/trips", controller.getTripReport);
-router.get("/finance", controller.getFinanceReport);
-router.get("/trip/:id", controller.getTripFinanceReport);
+router.get("/trips", requireModule("Reports", "can_view"), controller.getTripReport);
+router.get("/finance", requireModule("Reports", "can_export"), controller.getFinanceReport);
+router.get("/trip/:id", requireModule("Reports", "can_view"), controller.getTripFinanceReport);
 
 module.exports = router;

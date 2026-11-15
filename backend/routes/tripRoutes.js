@@ -13,9 +13,12 @@ router.get("/:id/route", requireModule("Trips", "can_view"), controller.getTripR
 router.post("/:id/stops", requireModule("Trips", "can_update"), controller.saveTripRoute);
 router.patch(
     "/:id/status",
-    requireModule("Trips", (req) =>
-        req.body?.status === "DISPATCHED" ? "can_dispatch" : "can_approve"
-    ),
+    requireModule("Trips", (req) => {
+        const status = String(req.body?.status || "").toUpperCase();
+        if (status === "DISPATCHED") return "can_dispatch";
+        if (status === "CLOSED") return "can_close";
+        return "can_approve";
+    }),
     controller.updateTripStatus
 );
 router.get("/:id", requireModule("Trips", "can_view"), controller.getTripById);
