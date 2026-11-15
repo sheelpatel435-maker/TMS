@@ -19,14 +19,35 @@ function RequireAuth({ children, adminOnly = false, superOnly = false }) {
   return children;
 }
 
+/** Super Admin without company context cannot use tenant screens yet. */
+function RequireCompanyContext({ children }) {
+  const { needsCompanyContext } = useAuth();
+  if (needsCompanyContext) {
+    return <Navigate to="/companies" replace />;
+  }
+  return children;
+}
+
+function homePath(authed, needsCompanyContext) {
+  if (!authed) return "/login";
+  if (needsCompanyContext) return "/companies";
+  return "/";
+}
+
 function AppRoutes() {
-  const { authed } = useAuth();
+  const { authed, needsCompanyContext } = useAuth();
 
   return (
     <Routes>
       <Route
         path="/login"
-        element={authed ? <Navigate to="/" replace /> : <Login />}
+        element={
+          authed ? (
+            <Navigate to={homePath(true, needsCompanyContext)} replace />
+          ) : (
+            <Login />
+          )
+        }
       />
       <Route
         path="/"
@@ -36,7 +57,14 @@ function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route
+          index
+          element={
+            <RequireCompanyContext>
+              <Dashboard />
+            </RequireCompanyContext>
+          }
+        />
         <Route
           path="companies"
           element={
@@ -49,17 +77,57 @@ function AppRoutes() {
           path="users"
           element={
             <RequireAuth adminOnly>
-              <Users />
+              <RequireCompanyContext>
+                <Users />
+              </RequireCompanyContext>
             </RequireAuth>
           }
         />
-        <Route path="vehicles" element={<Vehicles />} />
-        <Route path="drivers" element={<Drivers />} />
-        <Route path="helpers" element={<Helpers />} />
-        <Route path="bilties" element={<Bilties />} />
-        <Route path="trips" element={<Trips />} />
+        <Route
+          path="vehicles"
+          element={
+            <RequireCompanyContext>
+              <Vehicles />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="drivers"
+          element={
+            <RequireCompanyContext>
+              <Drivers />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="helpers"
+          element={
+            <RequireCompanyContext>
+              <Helpers />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="bilties"
+          element={
+            <RequireCompanyContext>
+              <Bilties />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="trips"
+          element={
+            <RequireCompanyContext>
+              <Trips />
+            </RequireCompanyContext>
+          }
+        />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={<Navigate to={homePath(authed, needsCompanyContext)} replace />}
+      />
     </Routes>
   );
 }

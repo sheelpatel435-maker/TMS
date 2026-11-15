@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { endpoints, getStoredUser } from "../api";
 import { useAuth } from "../auth";
 
@@ -11,11 +12,13 @@ const empty = {
 };
 
 export default function Companies() {
-  const { user, isSuperAdmin, applySession } = useAuth();
+  const navigate = useNavigate();
+  const { user, isSuperAdmin, applySession, needsCompanyContext } = useAuth();
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(empty);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [selecting, setSelecting] = useState(null);
   const activeCompanyId = user?.company_id || getStoredUser()?.company_id;
 
   const load = () =>
@@ -45,6 +48,7 @@ export default function Companies() {
   const selectCompany = async (companyId) => {
     setMsg("");
     setError("");
+    setSelecting(companyId);
     try {
       const data = await endpoints.selectCompany({
         company_id: companyId,
@@ -52,10 +56,66 @@ export default function Companies() {
       });
       applySession(data);
       setMsg(`Company context set to #${companyId}`);
+      navigate("/", { replace: true });
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSelecting(null);
     }
   };
+
+  const companyList = (
+    <div className="card">
+      <h3>{needsCompanyContext ? "Select company to continue" : "All companies"}</h3>
+      <p className="muted">
+        {needsCompanyContext
+          ? "Pick an active company. Dashboard and tenant screens open after selection."
+          : "Switch company anytime. Tenant APIs use only the signed session company."}
+        {activeCompanyId ? ` Active company #${activeCompanyId}.` : ""}
+      </p>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.id}>
+              <td>{c.id}</td>
+              <td>{c.name}</td>
+              <td>{Number(c.status) === 1 ? "Active" : "Inactive"}</td>
+              <td>
+                {isSuperAdmin && Number(c.status) === 1 ? (
+                  <button
+                    type="button"
+                    className={
+                      Number(activeCompanyId) === Number(c.id)
+                        ? "btn btn-ghost"
+                        : "btn btn-primary"
+                    }
+                    disabled={selecting !== null}
+                    onClick={() => selectCompany(c.id)}
+                  >
+                    {selecting === c.id
+                      ? "Selecting…"
+                      : Number(activeCompanyId) === Number(c.id)
+                        ? "Selected"
+                        : "Use company"}
+                  </button>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {msg ? <p className="ok">{msg}</p> : null}
+      {error ? <p className="error">{error}</p> : null}
+    </div>
+  );
 
   return (
     <div>
@@ -67,6 +127,8 @@ export default function Companies() {
           </p>
         </div>
       </div>
+
+      {needsCompanyContext ? companyList : null}
 
       <form className="card stack" onSubmit={onSubmit}>
         <h3>Create company</h3>
@@ -116,50 +178,11 @@ export default function Companies() {
         <div className="actions">
           <button className="btn btn-primary">Create company + admin</button>
         </div>
-        {msg ? <p className="ok">{msg}</p> : null}
-        {error ? <p className="error">{error}</p> : null}
+        {!needsCompanyContext && msg ? <p className="ok">{msg}</p> : null}
+        {!needsCompanyContext && error ? <p className="error">{error}</p> : null}
       </form>
 
-      <div className="card">
-        <h3>All companies</h3>
-        <p className="muted">
-          Super Admin must select a company context first. Tenant APIs never trust
-          client-sent company_id — only the signed session.
-          {activeCompanyId ? ` Active company #${activeCompanyId}.` : ""}
-        </p>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((c) => (
-              <tr key={c.id}>
-                <td>{c.id}</td>
-                <td>{c.name}</td>
-                <td>{Number(c.status) === 1 ? "Active" : "Inactive"}</td>
-                <td>
-                  {isSuperAdmin && Number(c.status) === 1 ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => selectCompany(c.id)}
-                    >
-                      {Number(activeCompanyId) === Number(c.id)
-                        ? "Selected"
-                        : "Use company"}
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {!needsCompanyContext ? companyList : null}
     </div>
   );
 }

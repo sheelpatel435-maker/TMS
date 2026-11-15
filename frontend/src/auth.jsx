@@ -49,7 +49,10 @@ export function AuthProvider({ children }) {
       isSuperAdmin: user?.user_type === "SUPER_ADMIN",
       isAdmin:
         user?.user_type === "SUPER_ADMIN" ||
-        user?.user_type === "COMPANY_ADMIN"
+        user?.user_type === "COMPANY_ADMIN",
+      // Super Admin must pick a company before tenant APIs work
+      needsCompanyContext:
+        user?.user_type === "SUPER_ADMIN" && !user?.company_id
     }),
     [user, authed]
   );

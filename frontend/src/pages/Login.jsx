@@ -16,8 +16,12 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      navigate("/");
+      const user = await login(email.trim(), password);
+      if (user?.user_type === "SUPER_ADMIN" && !user?.company_id) {
+        navigate("/companies", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (err) {
       setError(err.message || "Login failed");
     } finally {
