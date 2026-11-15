@@ -21,7 +21,9 @@ const requireCompanyContext = (req, res, next) => {
     if (!req.user?.company_id) {
         return res.status(400).json({
             success: false,
-            message: "Company ID is required"
+            message: isSuperAdmin(req.user)
+                ? "Select an active company (X-Company-Id)"
+                : "Company ID is required"
         });
     }
 
@@ -46,8 +48,27 @@ const assertCanManageUser = (
         throw new HttpError(403, "Admin access is required");
     }
 
-    if (!isSelf && Number(reqUser.company_id) !== Number(targetUser.company_id)) {
-        throw new HttpError(404, "User not found");
+    if (!isSelf) {
+        const sameCompany =
+            reqUser.company_id != null &&
+            Number(reqUser.company_id) === Number(targetUser.company_id);
+
+        const crossCompanyAdminStatus =
+            allowSuperAdminCompanyAdminStatus &&
+            isSuperAdmin(reqUser) &&
+            targetUser.user_type === "COMPANY_ADMIN";
+
+        if (isSuperAdmin(reqUser)) {
+            if (!sameCompany && !crossCompanyAdminStatus) {
+                if (reqUser.company_id == null) {
+                    throw new HttpError(400, "Select an active company (X-Company-Id)");
+                }
+
+                throw new HttpError(404, "User not found");
+            }
+        } else if (!sameCompany) {
+            throw new HttpError(404, "User not found");
+        }
     }
 
     const canManageCompanyAdminStatus =

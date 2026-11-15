@@ -4,7 +4,6 @@ const db = require("../config/db");
 const { uploadDir } = require("../middleware/upload");
 const { sendError, HttpError } = require("../utils/httpError");
 const { resolveCompanyId } = require("../utils/companyScope");
-const { isSuperAdmin } = require("../utils/roles");
 
 const SAFE_NAME = /^[a-zA-Z0-9._-]+$/;
 const DOC_TABLES = [
@@ -63,13 +62,12 @@ const downloadFile = async (req, res) => {
             throw new HttpError(404, "File not found");
         }
 
-        if (!isSuperAdmin(req.user)) {
-            const companyId = resolveCompanyId(req);
-            const allowed = await companyOwnsFile(companyId, filename);
+        // BRD §4: even Super Admin must act in a selected company for file access.
+        const companyId = resolveCompanyId(req);
+        const allowed = await companyOwnsFile(companyId, filename);
 
-            if (!allowed) {
-                throw new HttpError(403, "Access denied");
-            }
+        if (!allowed) {
+            throw new HttpError(403, "Access denied");
         }
 
         return res.sendFile(absolute);

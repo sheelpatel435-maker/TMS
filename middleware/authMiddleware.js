@@ -4,6 +4,7 @@ const userModel = require("../models/userModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
 const { sendError } = require("../utils/httpError");
 const { isSuperAdmin } = require("../utils/roles");
+const { stripClientCompanyId } = require("../utils/companyScope");
 
 const extractToken = (req) => {
     const authHeader = req.headers?.authorization;
@@ -22,11 +23,9 @@ const reject = (res, status, message) =>
         message
     });
 
+/** Super Admin company context: X-Company-Id header only (never query/body). */
 const readRequestedCompanyId = (req) => {
-    const rawValue =
-        req.headers?.["x-company-id"] ??
-        req.query?.company_id ??
-        req.body?.company_id;
+    const rawValue = req.headers?.["x-company-id"];
 
     if (rawValue === undefined || rawValue === null || rawValue === "") {
         return null;
@@ -108,6 +107,9 @@ const authMiddleware = async (req, res, next) => {
         };
 
         if (isSuperAdmin(req.user)) {
+            // Super Admin has no home company; bind only via validated X-Company-Id.
+            req.user.company_id = null;
+
             const requestedCompanyId = readRequestedCompanyId(req);
 
             if (Number.isNaN(requestedCompanyId)) {
@@ -137,6 +139,9 @@ const authMiddleware = async (req, res, next) => {
                 req.company = rows[0];
             }
         }
+
+        // BRD §4: never trust client company_id after session is established.
+        stripClientCompanyId(req);
 
         return next();
     } catch (error) {

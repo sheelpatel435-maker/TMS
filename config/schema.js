@@ -29,6 +29,204 @@ const addColumnIfMissing = async (table, column, definition) => {
     }
 };
 
+const indexExists = async (table, indexName) => {
+    const [rows] = await db.query(
+        `SELECT INDEX_NAME
+         FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND INDEX_NAME = ?
+         LIMIT 1`,
+        [table, indexName]
+    );
+
+    return rows.length > 0;
+};
+
+const foreignKeyExists = async (table, constraintName) => {
+    const [rows] = await db.query(
+        `SELECT CONSTRAINT_NAME
+         FROM information_schema.TABLE_CONSTRAINTS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+           AND CONSTRAINT_NAME = ?
+           AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+         LIMIT 1`,
+        [table, constraintName]
+    );
+
+    return rows.length > 0;
+};
+
+/** Best-effort: ignore failures on dirty legacy rows so boot never blocks. */
+const tryAlter = async (sql) => {
+    try {
+        await db.query(sql);
+    } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+            console.warn("[ensureSchema]", error.code || error.message, sql.slice(0, 120));
+        }
+    }
+};
+
+/**
+ * BRD §4 multi-tenant: composite uniqueness on (company_id, id) so child
+ * tables can FK both company and parent row together.
+ */
+const ensureTenantCompositeGuards = async () => {
+    const parents = [
+        "vehicles",
+        "drivers",
+        "helpers",
+        "clients",
+        "bilties",
+        "trips",
+        "invoices",
+        "users"
+    ];
+
+    for (const table of parents) {
+        if (!(await tableExists(table))) {
+            continue;
+        }
+
+        const indexName = `uq_${table}_company_id`;
+        if (!(await indexExists(table, indexName))) {
+            await tryAlter(
+                `ALTER TABLE ${table} ADD UNIQUE KEY ${indexName} (company_id, id)`
+            );
+        }
+    }
+
+    const compositeFks = [
+        {
+            table: "vehicle_documents",
+            name: "fk_vehicle_documents_vehicle_company",
+            cols: "(company_id, vehicle_id)",
+            ref: "vehicles (company_id, id)"
+        },
+        {
+            table: "driver_documents",
+            name: "fk_driver_documents_driver_company",
+            cols: "(company_id, driver_id)",
+            ref: "drivers (company_id, id)"
+        },
+        {
+            table: "helper_documents",
+            name: "fk_helper_documents_helper_company",
+            cols: "(company_id, helper_id)",
+            ref: "helpers (company_id, id)"
+        },
+        {
+            table: "bilties",
+            name: "fk_bilties_client_company",
+            cols: "(company_id, client_id)",
+            ref: "clients (company_id, id)"
+        },
+        {
+            table: "trips",
+            name: "fk_trips_vehicle_company",
+            cols: "(company_id, vehicle_id)",
+            ref: "vehicles (company_id, id)"
+        },
+        {
+            table: "trips",
+            name: "fk_trips_driver_company",
+            cols: "(company_id, driver_id)",
+            ref: "drivers (company_id, id)"
+        },
+        {
+            table: "trips",
+            name: "fk_trips_bilty_company",
+            cols: "(company_id, bilty_id)",
+            ref: "bilties (company_id, id)"
+        },
+        {
+            table: "trip_advances",
+            name: "fk_trip_advances_trip_company",
+            cols: "(company_id, trip_id)",
+            ref: "trips (company_id, id)"
+        },
+        {
+            table: "trip_expenses",
+            name: "fk_trip_expenses_trip_company",
+            cols: "(company_id, trip_id)",
+            ref: "trips (company_id, id)"
+        },
+        {
+            table: "trip_settlements",
+            name: "fk_trip_settlements_trip_company",
+            cols: "(company_id, trip_id)",
+            ref: "trips (company_id, id)"
+        },
+        {
+            table: "trip_final_reports",
+            name: "fk_trip_final_reports_trip_company",
+            cols: "(company_id, trip_id)",
+            ref: "trips (company_id, id)"
+        },
+        {
+            table: "trip_stops",
+            name: "fk_trip_stops_trip_company",
+            cols: "(company_id, trip_id)",
+            ref: "trips (company_id, id)"
+        },
+        {
+            table: "invoices",
+            name: "fk_invoices_client_company",
+            cols: "(company_id, client_id)",
+            ref: "clients (company_id, id)"
+        },
+        {
+            table: "invoice_taxes",
+            name: "fk_invoice_taxes_invoice_company",
+            cols: "(company_id, invoice_id)",
+            ref: "invoices (company_id, id)"
+        },
+        {
+            table: "invoice_payments",
+            name: "fk_invoice_payments_invoice_company",
+            cols: "(company_id, invoice_id)",
+            ref: "invoices (company_id, id)"
+        },
+        {
+            table: "trip_balance_ledger",
+            name: "fk_ledger_trip_company",
+            cols: "(company_id, trip_id)",
+            ref: "trips (company_id, id)"
+        },
+        {
+            table: "vehicle_assignments",
+            name: "fk_vehicle_assignments_vehicle_company",
+            cols: "(company_id, vehicle_id)",
+            ref: "vehicles (company_id, id)"
+        },
+        {
+            table: "vehicle_assignments",
+            name: "fk_vehicle_assignments_driver_company",
+            cols: "(company_id, driver_id)",
+            ref: "drivers (company_id, id)"
+        }
+    ];
+
+    for (const fk of compositeFks) {
+        if (!(await tableExists(fk.table))) {
+            continue;
+        }
+
+        if (await foreignKeyExists(fk.table, fk.name)) {
+            continue;
+        }
+
+        await tryAlter(
+            `ALTER TABLE ${fk.table}
+             ADD CONSTRAINT ${fk.name}
+             FOREIGN KEY ${fk.cols} REFERENCES ${fk.ref}
+             ON DELETE RESTRICT ON UPDATE CASCADE`
+        );
+    }
+};
+
 const ensureSchema = async () => {
     await addColumnIfMissing(
         "users",
@@ -349,6 +547,8 @@ const ensureSchema = async () => {
             KEY idx_ledger_driver (driver_id)
         )
     `);
+
+    await ensureTenantCompositeGuards();
 };
 
 module.exports = {

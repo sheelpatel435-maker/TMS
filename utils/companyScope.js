@@ -89,25 +89,45 @@ const assertOwnedUser = async (userId, companyId, { allowSuperAdmin = false } = 
     return user;
 };
 
+/**
+ * BRD §4: company_id comes only from the authenticated session
+ * (JWT user.company_id, or Super Admin X-Company-Id applied in auth middleware).
+ * Never trust query/body company_id.
+ */
 const resolveCompanyId = (req) => {
-    if (isSuperAdmin(req.user)) {
-        const scoped =
-            req.query?.company_id ??
-            req.body?.company_id ??
-            req.user.company_id;
-
-        if (scoped === undefined || scoped === null || scoped === "") {
-            throw new HttpError(400, "company_id is required");
-        }
-
-        return Number(scoped);
-    }
-
     if (!req.user?.company_id) {
-        throw new HttpError(400, "User is not assigned to a company");
+        throw new HttpError(
+            400,
+            isSuperAdmin(req.user)
+                ? "Select an active company (X-Company-Id)"
+                : "User is not assigned to a company"
+        );
     }
 
-    return req.user.company_id;
+    return Number(req.user.company_id);
+};
+
+/**
+ * Super Admin may omit company context on cross-tenant admin lists
+ * (users / audit). Everyone else always uses session company_id.
+ */
+const resolveOptionalCompanyId = (req) => {
+    if (isSuperAdmin(req.user) && !req.user?.company_id) {
+        return null;
+    }
+
+    return resolveCompanyId(req);
+};
+
+/** Drop client-supplied company_id so controllers cannot accidentally trust it. */
+const stripClientCompanyId = (req) => {
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, "company_id")) {
+        delete req.body.company_id;
+    }
+
+    if (req.query && Object.prototype.hasOwnProperty.call(req.query, "company_id")) {
+        delete req.query.company_id;
+    }
 };
 
 module.exports = {
@@ -115,5 +135,7 @@ module.exports = {
     getById,
     assertOwned,
     assertOwnedUser,
-    resolveCompanyId
+    resolveCompanyId,
+    resolveOptionalCompanyId,
+    stripClientCompanyId
 };

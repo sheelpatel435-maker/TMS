@@ -26,11 +26,8 @@ const publicUser = (user) => ({
 });
 
 const resolveListCompanyId = (req) => {
-    if (isSuperAdmin(req.user)) {
-        if (req.query.company_id) {
-            return Number(req.query.company_id);
-        }
-
+    // Session only: Super Admin without X-Company-Id may list all companies.
+    if (isSuperAdmin(req.user) && !req.user.company_id) {
         return null;
     }
 
@@ -101,11 +98,16 @@ const getUserById = async (req, res) => {
             throw new HttpError(404, "User not found");
         }
 
+        // Tenant isolation: when session has a company, never return another company's user.
         if (
-            !isSuperAdmin(req.user) &&
+            req.user.company_id != null &&
             Number(user.company_id) !== Number(req.user.company_id)
         ) {
             throw new HttpError(404, "User not found");
+        }
+
+        if (!isSuperAdmin(req.user) && !req.user.company_id) {
+            throw new HttpError(400, "User is not assigned to a company");
         }
 
         return res.status(200).json({
