@@ -1,22 +1,40 @@
 const db = require("../config/db");
 const { paginatedSelect } = require("../utils/pagination");
 const { toTinyIntStatus, firstPresent } = require("../utils/validation");
-const { buildListWhere } = require("../utils/queryFilters");
+const { AVAILABILITY_STATUSES } = require("../utils/crewWorkflow");
 
-const HELPER_COLUMNS = `id, company_id, user_id, name, mobile, email, address, status, created_at, updated_at`;
+const HELPER_COLUMNS = `id, company_id, user_id, name, mobile, email, address,
+    availability_status, status, created_at, updated_at`;
+
+const normalizeAvailability = (value, fallback = "AVAILABLE") => {
+    const status = String(value || fallback).toUpperCase();
+    return AVAILABILITY_STATUSES.includes(status) ? status : fallback;
+};
 
 const getHelpers = async (companyId, pagination, filters = {}) => {
-    const { where, params } = buildListWhere({
-        companyId,
-        filters,
-        searchColumns: ["name", "mobile"],
-        numericStatus: true
-    });
+    const where = ["company_id = ?"];
+    const params = [companyId];
+
+    if (filters.status !== undefined && filters.status !== "") {
+        where.push("status = ?");
+        params.push(toTinyIntStatus(filters.status, 1));
+    }
+
+    if (filters.availability_status) {
+        where.push("availability_status = ?");
+        params.push(String(filters.availability_status).toUpperCase());
+    }
+
+    if (filters.search) {
+        where.push("(name LIKE ? OR mobile LIKE ?)");
+        const term = `%${filters.search}%`;
+        params.push(term, term);
+    }
 
     return paginatedSelect(db, {
         table: "helpers",
         columns: HELPER_COLUMNS,
-        where,
+        where: where.join(" AND "),
         params,
         pagination
     });
@@ -45,9 +63,10 @@ const createHelper = async (companyId, data, connection = null) => {
             mobile,
             email,
             address,
+            availability_status,
             status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             companyId,
             data.user_id || null,
@@ -55,6 +74,7 @@ const createHelper = async (companyId, data, connection = null) => {
             data.mobile,
             data.email || null,
             data.address || null,
+            normalizeAvailability(data.availability_status, "AVAILABLE"),
             toTinyIntStatus(data.status, 1)
         ]
     );
@@ -74,15 +94,20 @@ const findHelperByUserId = async (userId, companyId) => {
     return rows[0] || null;
 };
 
-const findHelperByMobile = async (companyId, mobile) => {
-    const [rows] = await db.execute(
-        `SELECT ${HELPER_COLUMNS}
-         FROM helpers
-         WHERE company_id = ? AND mobile = ? AND status = 1
-         LIMIT 1`,
-        [companyId, mobile]
-    );
+const findHelperByMobile = async (companyId, mobile, excludeId = null) => {
+    const params = [companyId, mobile];
+    let sql = `SELECT ${HELPER_COLUMNS}
+               FROM helpers
+               WHERE company_id = ? AND mobile = ?`;
 
+    if (excludeId) {
+        sql += " AND id <> ?";
+        params.push(excludeId);
+    }
+
+    sql += " LIMIT 1";
+
+    const [rows] = await db.execute(sql, params);
     return rows[0] || null;
 };
 
@@ -93,6 +118,7 @@ const updateHelper = async (id, companyId, data) => {
              mobile = ?,
              email = ?,
              address = ?,
+             availability_status = ?,
              status = ?
          WHERE id = ? AND company_id = ?`,
         [
@@ -100,6 +126,10 @@ const updateHelper = async (id, companyId, data) => {
             data.mobile,
             data.email || null,
             data.address || null,
+            normalizeAvailability(
+                data.availability_status,
+                data.availability_status || "AVAILABLE"
+            ),
             toTinyIntStatus(data.status, 1),
             id,
             companyId
@@ -109,10 +139,22 @@ const updateHelper = async (id, companyId, data) => {
     return result.affectedRows;
 };
 
+const setAvailability = async (id, companyId, availabilityStatus) => {
+    const [result] = await db.execute(
+        `UPDATE helpers
+         SET availability_status = ?
+         WHERE id = ? AND company_id = ?`,
+        [normalizeAvailability(availabilityStatus), id, companyId]
+    );
+
+    return result.affectedRows;
+};
+
 const deactivateHelper = async (id, companyId) => {
     const [result] = await db.execute(
         `UPDATE helpers
-         SET status = 0
+         SET status = 0,
+             availability_status = 'INACTIVE'
          WHERE id = ? AND company_id = ?`,
         [id, companyId]
     );
@@ -127,5 +169,6 @@ module.exports = {
     findHelperByUserId,
     findHelperByMobile,
     updateHelper,
+    setAvailability,
     deactivateHelper
 };

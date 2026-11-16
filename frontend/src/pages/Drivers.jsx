@@ -83,6 +83,7 @@ export default function Drivers() {
               <th>Name</th>
               <th>Mobile</th>
               <th>User ID</th>
+              <th>Availability</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -92,6 +93,7 @@ export default function Drivers() {
                 <td>{d.name}</td>
                 <td>{d.mobile}</td>
                 <td>{d.user_id || "—"}</td>
+                <td>{d.availability_status || "AVAILABLE"}</td>
                 <td>{Number(d.status) === 1 ? "Active" : "Inactive"}</td>
               </tr>
             ))}

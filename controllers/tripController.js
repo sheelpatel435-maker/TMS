@@ -8,6 +8,25 @@ const { parseListFilters } = require("../utils/queryFilters");
 const { assertTransition, isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
 const { withTransaction } = require("../utils/transaction");
+const {
+    assertCrewAssignable,
+    assertCrewFreeForTrip,
+    syncCrewAvailabilityForTrip
+} = require("../utils/crewWorkflow");
+
+const assertTripCrew = async (companyId, { driverId, helperId }, excludeTripId = null) => {
+    const driver = await assertOwned("drivers", driverId, companyId, "Driver");
+    assertCrewAssignable(driver, "Driver");
+
+    const helper = await assertOwned("helpers", helperId, companyId, "Helper");
+    assertCrewAssignable(helper, "Helper");
+
+    await assertCrewFreeForTrip(
+        companyId,
+        { driverId, helperId: helperId || null },
+        excludeTripId
+    );
+};
 
 const assertLoadFitsVehicle = (vehicle, bilty) => {
     if (!vehicle || !bilty) {
@@ -101,8 +120,10 @@ const createTrip = async (req, res) => {
         }
 
         const vehicle = await assertOwned("vehicles", vehicle_id, companyId, "Vehicle");
-        await assertOwned("drivers", driver_id, companyId, "Driver");
-        await assertOwned("helpers", helper_id, companyId, "Helper");
+        await assertTripCrew(companyId, {
+            driverId: driver_id,
+            helperId: helper_id
+        });
         const bilty = await assertOwned("bilties", bilty_id, companyId, "Bilty");
         await assertOwned("clients", client_id, companyId, "Client");
         assertLoadFitsVehicle(vehicle, bilty);
@@ -158,8 +179,11 @@ const updateTrip = async (req, res) => {
         }
 
         const vehicle = await assertOwned("vehicles", vehicle_id, companyId, "Vehicle");
-        await assertOwned("drivers", driver_id, companyId, "Driver");
-        await assertOwned("helpers", helper_id, companyId, "Helper");
+        await assertTripCrew(
+            companyId,
+            { driverId: driver_id, helperId: helper_id },
+            trip.id
+        );
         const bilty = await assertOwned("bilties", bilty_id, companyId, "Bilty");
         await assertOwned("clients", client_id, companyId, "Client");
         assertLoadFitsVehicle(vehicle, bilty);
@@ -199,6 +223,7 @@ const deactivateTrip = async (req, res) => {
 
         assertTransition("trip", trip.status, "CANCELLED");
         await tripModel.updateTripStatus(req.params.id, companyId, "CANCELLED");
+        await syncCrewAvailabilityForTrip(companyId, trip, "CANCELLED");
         await writeAudit(
             req,
             "TRIP_CANCELLED",
@@ -252,6 +277,7 @@ const updateTripStatus = async (req, res) => {
                 { companyId, connection, required: true }
             );
         });
+        await syncCrewAvailabilityForTrip(companyId, trip, status);
 
         return res.status(200).json({
             success: true,

@@ -624,6 +624,16 @@ const ensureSchema = async () => {
         "user_id",
         "BIGINT UNSIGNED NULL DEFAULT NULL"
     );
+    await addColumnIfMissing(
+        "drivers",
+        "availability_status",
+        "VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE'"
+    );
+    await addColumnIfMissing(
+        "helpers",
+        "availability_status",
+        "VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE'"
+    );
 
     await addColumnIfMissing(
         "trip_expenses",

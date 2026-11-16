@@ -81,6 +81,7 @@ export default function Helpers() {
               <th>Name</th>
               <th>Mobile</th>
               <th>User ID</th>
+              <th>Availability</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -90,6 +91,7 @@ export default function Helpers() {
                 <td>{h.name}</td>
                 <td>{h.mobile}</td>
                 <td>{h.user_id || "—"}</td>
+                <td>{h.availability_status || "AVAILABLE"}</td>
                 <td>{Number(h.status) === 1 ? "Active" : "Inactive"}</td>
               </tr>
             ))}

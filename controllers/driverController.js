@@ -22,6 +22,10 @@ const getDriverFilters = (query) => {
         filters.status = query.status;
     }
 
+    if (query.availability_status) {
+        filters.availability_status = String(query.availability_status).trim();
+    }
+
     return filters;
 };
 
@@ -81,6 +85,11 @@ const createDriver = async (req, res) => {
 
         const cleanMobile = requireValidMobile(mobile);
 
+        const existing = await driverModel.findDriverByMobile(companyId, cleanMobile);
+        if (existing) {
+            throw new HttpError(409, "Driver with this mobile number already exists");
+        }
+
         const { id, userId } = await withTransaction(async (connection) => {
             const login = await createStaffLoginUser({
                 companyId,
@@ -97,7 +106,8 @@ const createDriver = async (req, res) => {
                 {
                     ...req.body,
                     mobile: cleanMobile,
-                    user_id: login.userId
+                    user_id: login.userId,
+                    availability_status: "AVAILABLE"
                 },
                 connection
             );
@@ -107,6 +117,7 @@ const createDriver = async (req, res) => {
 
         await writeAudit(req, "DRIVER_CREATED", "driver", id);
 
+        // Admin-created docs are trusted — no separate verification step
         if (!isMissing(license_number)) {
             await driverDocumentModel.createDriverDocument(companyId, id, {
                 document_type: "LICENSE",
@@ -129,20 +140,41 @@ const createDriver = async (req, res) => {
 const updateDriver = async (req, res) => {
     try {
         const companyId = requireCompany(req);
-        const { name, mobile } = req.body;
+        const existing = await driverModel.getDriverById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        const name = req.body.name ?? existing.name;
+        const mobile = req.body.mobile ?? existing.mobile;
 
         if (isMissing(name) || isMissing(mobile)) {
             throw new HttpError(400, "Name and mobile are required");
         }
 
-        const updated = await driverModel.updateDriver(
-            req.params.id,
+        const cleanMobile = requireValidMobile(mobile);
+        const duplicate = await driverModel.findDriverByMobile(
             companyId,
-            {
-                ...req.body,
-                mobile: requireValidMobile(mobile)
-            }
+            cleanMobile,
+            req.params.id
         );
+        if (duplicate) {
+            throw new HttpError(409, "Driver with this mobile number already exists");
+        }
+
+        const updated = await driverModel.updateDriver(req.params.id, companyId, {
+            name,
+            mobile: cleanMobile,
+            email: req.body.email !== undefined ? req.body.email : existing.email,
+            address:
+                req.body.address !== undefined ? req.body.address : existing.address,
+            status: req.body.status !== undefined ? req.body.status : existing.status,
+            availability_status:
+                req.body.availability_status !== undefined
+                    ? req.body.availability_status
+                    : existing.availability_status
+        });
 
         if (!updated) {
             throw new HttpError(404, "Driver not found");
@@ -162,6 +194,16 @@ const updateDriver = async (req, res) => {
 const deactivateDriver = async (req, res) => {
     try {
         const companyId = requireCompany(req);
+        const existing = await driverModel.getDriverById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        if (existing.availability_status === "ON_TRIP") {
+            throw new HttpError(400, "Cannot deactivate driver who is on a trip");
+        }
+
         const updated = await driverModel.deactivateDriver(req.params.id, companyId);
 
         if (!updated) {

@@ -10,6 +10,7 @@ const {
     isoDate,
     optionalBoolean
 } = require("../utils/vehicleValidation");
+const { assertCrewAssignable } = require("../utils/crewWorkflow");
 
 const isPastDate = (value) => value < new Date().toISOString().slice(0, 10);
 
@@ -200,9 +201,21 @@ const createVehicleAssignment = async (req, res) => {
         const data = normalizeAssignment(req.body);
         await assertOwned("vehicles", data.vehicle_id, companyId, "Vehicle");
         if (data.assignment_role === "DRIVER") {
-            await assertOwned("drivers", data.driver_id, companyId, "Driver");
+            const driver = await assertOwned(
+                "drivers",
+                data.driver_id,
+                companyId,
+                "Driver"
+            );
+            assertCrewAssignable(driver, "Driver");
         } else {
-            await assertOwned("helpers", data.helper_id, companyId, "Helper");
+            const helper = await assertOwned(
+                "helpers",
+                data.helper_id,
+                companyId,
+                "Helper"
+            );
+            assertCrewAssignable(helper, "Helper");
         }
 
         const activeFlag = data.end_date && isPastDate(data.end_date) ? 0 : data.is_active;
@@ -262,9 +275,21 @@ const updateVehicleAssignment = async (req, res) => {
         const data = normalizeAssignment(req.body, existing);
         await assertOwned("vehicles", data.vehicle_id, companyId, "Vehicle");
         if (data.assignment_role === "DRIVER") {
-            await assertOwned("drivers", data.driver_id, companyId, "Driver");
+            const driver = await assertOwned(
+                "drivers",
+                data.driver_id,
+                companyId,
+                "Driver"
+            );
+            assertCrewAssignable(driver, "Driver");
         } else {
-            await assertOwned("helpers", data.helper_id, companyId, "Helper");
+            const helper = await assertOwned(
+                "helpers",
+                data.helper_id,
+                companyId,
+                "Helper"
+            );
+            assertCrewAssignable(helper, "Helper");
         }
 
         const activeFlag = data.end_date && isPastDate(data.end_date) ? 0 : data.is_active;
