@@ -13,6 +13,128 @@ const {
 
 const isPastDate = (value) => value < new Date().toISOString().slice(0, 10);
 
+const parseAssignmentFilters = (query = {}) => {
+    const filters = parseListFilters(query);
+    if (query.vehicle_id) filters.vehicle_id = query.vehicle_id;
+    if (query.driver_id) filters.driver_id = query.driver_id;
+    if (query.helper_id) filters.helper_id = query.helper_id;
+    if (query.assignment_role || query.role) {
+        filters.assignment_role = query.assignment_role || query.role;
+    }
+    if (
+        query.include_inactive === "1" ||
+        query.include_inactive === "true" ||
+        query.history === "1" ||
+        query.history === "true"
+    ) {
+        filters.include_inactive = true;
+    }
+    return filters;
+};
+
+/**
+ * Driver and helper must be separate assignment rows.
+ * Body:
+ *  - assignment_role: DRIVER | HELPER (optional if only one person id sent)
+ *  - DRIVER => driver_id required, helper_id must be empty
+ *  - HELPER => helper_id required, driver_id must be empty
+ */
+const normalizeAssignment = (body, existing = null) => {
+    const vehicle_id = positiveInteger(
+        body.vehicle_id ?? existing?.vehicle_id,
+        "vehicle_id"
+    );
+
+    let role = String(
+        body.assignment_role ?? body.role ?? existing?.assignment_role ?? ""
+    )
+        .trim()
+        .toUpperCase();
+
+    const hasDriver =
+        body.driver_id !== undefined
+            ? body.driver_id !== null && body.driver_id !== ""
+            : existing?.driver_id != null;
+    const hasHelper =
+        body.helper_id !== undefined
+            ? body.helper_id !== null && body.helper_id !== ""
+            : existing?.helper_id != null;
+
+    if (!role) {
+        if (hasDriver && !hasHelper) role = "DRIVER";
+        else if (hasHelper && !hasDriver) role = "HELPER";
+    }
+
+    if (!["DRIVER", "HELPER"].includes(role)) {
+        throw new HttpError(
+            400,
+            "assignment_role must be DRIVER or HELPER (separate assignments)"
+        );
+    }
+
+    let driver_id = null;
+    let helper_id = null;
+
+    if (role === "DRIVER") {
+        const raw =
+            body.driver_id !== undefined ? body.driver_id : existing?.driver_id;
+        driver_id = positiveInteger(raw, "driver_id");
+        if (
+            body.helper_id !== undefined &&
+            body.helper_id !== null &&
+            body.helper_id !== ""
+        ) {
+            throw new HttpError(
+                400,
+                "HELPER cannot be set on a DRIVER assignment; create a separate HELPER assignment"
+            );
+        }
+    } else {
+        const raw =
+            body.helper_id !== undefined ? body.helper_id : existing?.helper_id;
+        helper_id = positiveInteger(raw, "helper_id");
+        if (
+            body.driver_id !== undefined &&
+            body.driver_id !== null &&
+            body.driver_id !== ""
+        ) {
+            throw new HttpError(
+                400,
+                "DRIVER cannot be set on a HELPER assignment; create a separate DRIVER assignment"
+            );
+        }
+    }
+
+    const start_date = isoDate(
+        body.start_date ?? existing?.start_date,
+        "start_date",
+        false
+    );
+    const end_date = isoDate(
+        body.end_date !== undefined ? body.end_date : existing?.end_date,
+        "end_date"
+    );
+    if (end_date && end_date < start_date) {
+        throw new HttpError(400, "end_date must be on or after start_date");
+    }
+
+    const is_active = optionalBoolean(
+        body.is_active !== undefined ? body.is_active : existing?.is_active,
+        "is_active",
+        1
+    );
+
+    return {
+        vehicle_id,
+        assignment_role: role,
+        driver_id,
+        helper_id,
+        start_date,
+        end_date,
+        is_active
+    };
+};
+
 const getVehicleAssignments = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
@@ -20,10 +142,39 @@ const getVehicleAssignments = async (req, res) => {
             await vehicleAssignmentModel.getVehicleAssignments(
                 companyId,
                 parsePagination(req.query),
-                parseListFilters(req.query)
+                parseAssignmentFilters(req.query)
             );
 
         return res.status(200).json({ success: true, assignments, pagination });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+/** Full history (active + closed) for vehicle / driver / helper */
+const getAssignmentHistory = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const filters = parseAssignmentFilters({
+            ...req.query,
+            include_inactive: "1"
+        });
+        // Clear status so closed rows are included
+        delete filters.status;
+
+        const { rows: assignments, pagination } =
+            await vehicleAssignmentModel.getVehicleAssignments(
+                companyId,
+                parsePagination(req.query),
+                filters
+            );
+
+        return res.status(200).json({
+            success: true,
+            history: assignments,
+            assignments,
+            pagination
+        });
     } catch (error) {
         return sendError(res, error);
     }
@@ -43,29 +194,16 @@ const getAssignmentById = async (req, res) => {
     }
 };
 
-const normalizeAssignment = (body) => {
-    const vehicle_id = positiveInteger(body.vehicle_id, "vehicle_id");
-    const driver_id = body.driver_id ? positiveInteger(body.driver_id, "driver_id") : null;
-    const helper_id = body.helper_id ? positiveInteger(body.helper_id, "helper_id") : null;
-    if (!driver_id && !helper_id) {
-        throw new HttpError(400, "driver_id or helper_id is required");
-    }
-    const start_date = isoDate(body.start_date, "start_date", false);
-    const end_date = isoDate(body.end_date, "end_date");
-    if (end_date && end_date < start_date) {
-        throw new HttpError(400, "end_date must be on or after start_date");
-    }
-    const is_active = optionalBoolean(body.is_active, "is_active", 1);
-    return { vehicle_id, driver_id, helper_id, start_date, end_date, is_active };
-};
-
 const createVehicleAssignment = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
         const data = normalizeAssignment(req.body);
         await assertOwned("vehicles", data.vehicle_id, companyId, "Vehicle");
-        await assertOwned("drivers", data.driver_id, companyId, "Driver");
-        await assertOwned("helpers", data.helper_id, companyId, "Helper");
+        if (data.assignment_role === "DRIVER") {
+            await assertOwned("drivers", data.driver_id, companyId, "Driver");
+        } else {
+            await assertOwned("helpers", data.helper_id, companyId, "Helper");
+        }
 
         const activeFlag = data.end_date && isPastDate(data.end_date) ? 0 : data.is_active;
         const id = await withTransaction(async (connection) => {
@@ -84,7 +222,7 @@ const createVehicleAssignment = async (req, res) => {
                 if (overlap) {
                     throw new HttpError(
                         409,
-                        "Vehicle, driver, or helper already has an overlapping active assignment"
+                        `${data.assignment_role} already has an overlapping active assignment for this vehicle or person`
                     );
                 }
             }
@@ -98,7 +236,7 @@ const createVehicleAssignment = async (req, res) => {
                 "ASSIGNMENT_CREATED",
                 "vehicle_assignment",
                 createdId,
-                undefined,
+                JSON.stringify(data),
                 { companyId, connection, required: true }
             );
             return createdId;
@@ -106,7 +244,7 @@ const createVehicleAssignment = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: "Vehicle assignment created successfully",
+            message: `${data.assignment_role} assignment created successfully`,
             id
         });
     } catch (error) {
@@ -114,11 +252,72 @@ const createVehicleAssignment = async (req, res) => {
     }
 };
 
-const updateVehicleAssignment = async (_req, res) =>
-    res.status(409).json({
-        success: false,
-        message: "Assignment history cannot be overwritten; close it and create a new assignment"
-    });
+const updateVehicleAssignment = async (req, res) => {
+    try {
+        const id = positiveInteger(req.params.id, "id");
+        const companyId = resolveCompanyId(req);
+        const existing = await vehicleAssignmentModel.getAssignmentById(id, companyId);
+        if (!existing) throw new HttpError(404, "Assignment not found");
+
+        const data = normalizeAssignment(req.body, existing);
+        await assertOwned("vehicles", data.vehicle_id, companyId, "Vehicle");
+        if (data.assignment_role === "DRIVER") {
+            await assertOwned("drivers", data.driver_id, companyId, "Driver");
+        } else {
+            await assertOwned("helpers", data.helper_id, companyId, "Helper");
+        }
+
+        const activeFlag = data.end_date && isPastDate(data.end_date) ? 0 : data.is_active;
+
+        await withTransaction(async (connection) => {
+            await vehicleAssignmentModel.lockAssignmentResources(
+                companyId,
+                { ...data, is_active: activeFlag },
+                connection
+            );
+            if (activeFlag === 1) {
+                const overlap = await vehicleAssignmentModel.findOverlap(
+                    companyId,
+                    data,
+                    id,
+                    connection
+                );
+                if (overlap) {
+                    throw new HttpError(
+                        409,
+                        `${data.assignment_role} already has an overlapping active assignment for this vehicle or person`
+                    );
+                }
+            }
+
+            const updated = await vehicleAssignmentModel.updateVehicleAssignment(
+                id,
+                companyId,
+                { ...data, is_active: activeFlag },
+                connection
+            );
+            if (!updated) throw new HttpError(404, "Assignment not found");
+
+            await writeAudit(
+                req,
+                "ASSIGNMENT_UPDATED",
+                "vehicle_assignment",
+                id,
+                JSON.stringify({ before: existing, after: data }),
+                { companyId, connection, required: true }
+            );
+        });
+
+        const assignment = await vehicleAssignmentModel.getAssignmentById(id, companyId);
+        return res.status(200).json({
+            success: true,
+            message: "Assignment updated successfully",
+            assignment
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
 
 const close = async (req, res, action, message) => {
     try {
@@ -167,6 +366,7 @@ const closeVehicleAssignment = (req, res) =>
 
 module.exports = {
     getVehicleAssignments,
+    getAssignmentHistory,
     getAssignmentById,
     createVehicleAssignment,
     updateVehicleAssignment,

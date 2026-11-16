@@ -562,17 +562,61 @@ spec.paths["/api/helper-documents/{id}"] = itemOps("Helpers", "helper document",
 
 spec.paths["/api/vehicle-assignments"] = crud(
     "Vehicles",
-    "vehicle assignment",
-    { vehicle_id: 1, driver_id: 1, helper_id: 1, start_date: "2026-11-04" },
+    "vehicle assignment (DRIVER and HELPER are separate rows)",
+    {
+        vehicle_id: 1,
+        assignment_role: "DRIVER",
+        driver_id: 1,
+        start_date: "2026-11-04"
+    },
     ["vehicle_id", "start_date"]
 );
+spec.paths["/api/vehicle-assignments/history"] = {
+    get: secured(
+        "Vehicles",
+        "Full assignment history (active + closed). Filter with vehicle_id, driver_id, helper_id, assignment_role.",
+        {
+            parameters: [
+                ...listParams,
+                {
+                    name: "vehicle_id",
+                    in: "query",
+                    schema: { type: "integer" }
+                },
+                {
+                    name: "driver_id",
+                    in: "query",
+                    schema: { type: "integer" }
+                },
+                {
+                    name: "helper_id",
+                    in: "query",
+                    schema: { type: "integer" }
+                },
+                {
+                    name: "assignment_role",
+                    in: "query",
+                    schema: { type: "string", enum: ["DRIVER", "HELPER"] }
+                }
+            ]
+        }
+    )
+};
 spec.paths["/api/vehicle-assignments/{id}"] = itemOps(
     "Vehicles",
-    "vehicle assignment",
-    { end_date: "2026-11-10" }
+    "vehicle assignment (PUT edits dates/person/vehicle; role stays DRIVER or HELPER separately)",
+    {
+        vehicle_id: 1,
+        assignment_role: "DRIVER",
+        driver_id: 2,
+        start_date: "2026-11-04",
+        end_date: "2026-11-10"
+    }
 );
 spec.paths["/api/vehicle-assignments/{id}/close"] = {
-    patch: secured("Vehicles", "Close an assignment", { parameters: [idParam] })
+    patch: secured("Vehicles", "Close an assignment (keeps history row)", {
+        parameters: [idParam]
+    })
 };
 
 spec.paths["/api/trips"] = crud(

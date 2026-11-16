@@ -8,7 +8,13 @@ const { requireAdminVehicleUser, requireVehicleId } = require("../../middleware/
 
 router.use(authMiddleware);
 router.use(requireAdminVehicleUser);
+
 router.get("/", requireModule("Vehicles", "can_view"), controller.getVehicleAssignments);
+router.get(
+    "/history",
+    requireModule("Vehicles", "can_view"),
+    controller.getAssignmentHistory
+);
 router.post("/", requireModule("Vehicles", "can_create"), controller.createVehicleAssignment);
 router.get("/:id", requireVehicleId, requireModule("Vehicles", "can_view"), controller.getAssignmentById);
 router.put("/:id", requireVehicleId, requireModule("Vehicles", "can_update"), controller.updateVehicleAssignment);

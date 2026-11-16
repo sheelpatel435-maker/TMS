@@ -671,6 +671,97 @@ const ensureSchema = async () => {
 
     await ensureVehicleTypesAreCompanyScoped();
     await ensureTenantCompositeKeys();
+    await ensureSeparateDriverHelperAssignments();
+};
+
+const ensureSeparateDriverHelperAssignments = async () => {
+    if (!(await tableExists("vehicle_assignments"))) {
+        return;
+    }
+
+    await addColumnIfMissing(
+        "vehicle_assignments",
+        "assignment_role",
+        "ENUM('DRIVER','HELPER') NULL"
+    );
+
+    // Backfill role from existing person columns
+    await db.query(
+        `UPDATE vehicle_assignments
+         SET assignment_role = 'DRIVER'
+         WHERE assignment_role IS NULL
+           AND driver_id IS NOT NULL
+           AND helper_id IS NULL`
+    );
+    await db.query(
+        `UPDATE vehicle_assignments
+         SET assignment_role = 'HELPER'
+         WHERE assignment_role IS NULL
+           AND helper_id IS NOT NULL
+           AND driver_id IS NULL`
+    );
+
+    // Combined rows (old model): keep DRIVER on original, split HELPER into new row
+    const [combined] = await db.query(
+        `SELECT id, company_id, vehicle_id, driver_id, helper_id,
+                start_date, end_date, is_active
+         FROM vehicle_assignments
+         WHERE driver_id IS NOT NULL AND helper_id IS NOT NULL`
+    );
+
+    for (const row of combined) {
+        await db.query(
+            `INSERT INTO vehicle_assignments
+             (company_id, vehicle_id, assignment_role, driver_id, helper_id,
+              start_date, end_date, is_active)
+             VALUES (?, ?, 'HELPER', NULL, ?, ?, ?, ?)`,
+            [
+                row.company_id,
+                row.vehicle_id,
+                row.helper_id,
+                row.start_date,
+                row.end_date,
+                row.is_active
+            ]
+        );
+        await db.query(
+            `UPDATE vehicle_assignments
+             SET assignment_role = 'DRIVER',
+                 helper_id = NULL
+             WHERE id = ?`,
+            [row.id]
+        );
+    }
+
+    // Any remaining null role with only helper
+    await db.query(
+        `UPDATE vehicle_assignments
+         SET assignment_role = 'HELPER'
+         WHERE assignment_role IS NULL AND helper_id IS NOT NULL`
+    );
+    await db.query(
+        `UPDATE vehicle_assignments
+         SET assignment_role = 'DRIVER'
+         WHERE assignment_role IS NULL AND driver_id IS NOT NULL`
+    );
+
+    try {
+        await db.query(
+            `ALTER TABLE vehicle_assignments
+             MODIFY COLUMN assignment_role ENUM('DRIVER','HELPER') NOT NULL`
+        );
+    } catch (error) {
+        console.warn(
+            "vehicle_assignments.assignment_role NOT NULL skipped:",
+            error.message
+        );
+    }
+
+    await addUniqueIfMissing(
+        "vehicle_assignments",
+        "idx_vehicle_assignments_company_role_active",
+        "(company_id, vehicle_id, assignment_role, is_active, start_date)"
+    );
 };
 
 module.exports = {
