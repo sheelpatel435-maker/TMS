@@ -482,7 +482,7 @@ spec.paths["/api/bilties/copy-settings"] = {
 spec.paths["/api/bilties/{id}/print"] = {
     get: secured(
         "Bilty",
-        "Print pages for selected copies. Query copies=ALL or copies=CONSIGNOR,DRIVER. Each page has color + page_break_after.",
+        "Print pages for selected copies. DRIVER pages use limited fields (route/consignee/truck/packages). Others fuller. Each page has field_profile, color, page_break_after.",
         {
             parameters: [
                 idParam,
