@@ -1,4 +1,5 @@
 const biltyModel = require("../models/biltyModel");
+const biltyCopySettingsModel = require("../models/biltyCopySettingsModel");
 const companyModel = require("../models/companyModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
@@ -14,7 +15,11 @@ const {
 } = require("../utils/statusTransitions");
 const {
     normalizeBiltyPayload,
-    buildPrintPayload
+    buildPrintPayload,
+    parseRequestedCopies,
+    normalizeCopyType,
+    PRINT_COPY_TYPES,
+    isHexColor
 } = require("../utils/biltyFields");
 const { positiveInteger } = require("../utils/vehicleValidation");
 
@@ -55,6 +60,34 @@ const getBiltyById = async (req, res) => {
     }
 };
 
+const resolvePrintOptions = async (req, companyId) => {
+    const rawCopies =
+        req.body?.copies ??
+        req.query?.copies ??
+        req.query?.copy ??
+        "ALL";
+    const selectedCopies = parseRequestedCopies(rawCopies);
+    const copySettings = await biltyCopySettingsModel.ensureDefaults(companyId);
+
+    const colorOverrides = {};
+    const rawColors = req.body?.colors || req.query?.colors;
+    if (rawColors && typeof rawColors === "object" && !Array.isArray(rawColors)) {
+        for (const [key, value] of Object.entries(rawColors)) {
+            const copyType = normalizeCopyType(key);
+            if (!PRINT_COPY_TYPES.includes(copyType)) continue;
+            if (!isHexColor(value)) {
+                throw new HttpError(
+                    400,
+                    `colors.${copyType} must be a hex color like #F8C8DC`
+                );
+            }
+            colorOverrides[copyType] = String(value).trim();
+        }
+    }
+
+    return { selectedCopies, copySettings, colorOverrides };
+};
+
 const getBiltyPrint = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
@@ -64,9 +97,98 @@ const getBiltyPrint = async (req, res) => {
         }
 
         const company = await companyModel.getById(companyId);
+        const options = await resolvePrintOptions(req, companyId);
+
         return res.status(200).json({
             success: true,
-            print: buildPrintPayload(bilty, company)
+            print: buildPrintPayload(bilty, company, options)
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const postBiltyPrint = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const bilty = await biltyModel.getBiltyWithCharges(req.params.id, companyId);
+        if (!bilty) {
+            throw new HttpError(404, "Bilty not found");
+        }
+
+        const company = await companyModel.getById(companyId);
+        const options = await resolvePrintOptions(req, companyId);
+
+        return res.status(200).json({
+            success: true,
+            print: buildPrintPayload(bilty, company, options)
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const getBiltyCopySettings = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const copies = await biltyCopySettingsModel.ensureDefaults(companyId);
+        return res.status(200).json({
+            success: true,
+            copies,
+            available_copies: PRINT_COPY_TYPES
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const updateBiltyCopySettings = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const rows = req.body?.copies;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new HttpError(400, "copies array is required");
+        }
+
+        const normalized = rows.map((row, index) => {
+            const copy_type = normalizeCopyType(row.copy_type);
+            if (!PRINT_COPY_TYPES.includes(copy_type)) {
+                throw new HttpError(
+                    400,
+                    `copies[${index}].copy_type must be one of ${PRINT_COPY_TYPES.join(", ")}`
+                );
+            }
+            if (!isHexColor(row.color_hex)) {
+                throw new HttpError(
+                    400,
+                    `copies[${index}].color_hex must be like #FFFFFF or #F8C8DC`
+                );
+            }
+            return {
+                copy_type,
+                label: String(row.label || `${copy_type} Copy`).trim().slice(0, 80),
+                color_hex: String(row.color_hex).trim(),
+                color_name: row.color_name
+                    ? String(row.color_name).trim().slice(0, 40)
+                    : null,
+                sort_order:
+                    row.sort_order === undefined || row.sort_order === null
+                        ? index + 1
+                        : Number(row.sort_order),
+                status: row.status === 0 || row.status === "0" ? 0 : 1
+            };
+        });
+
+        const copies = await biltyCopySettingsModel.upsertSettings(
+            companyId,
+            normalized
+        );
+        await writeAudit(req, "BILTY_COPY_SETTINGS_UPDATED", "bilty_copy_settings", companyId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Bilty copy colors saved",
+            copies
         });
     } catch (error) {
         return sendError(res, error);
@@ -385,6 +507,9 @@ module.exports = {
     getBilties,
     getBiltyById,
     getBiltyPrint,
+    postBiltyPrint,
+    getBiltyCopySettings,
+    updateBiltyCopySettings,
     reserveBilty,
     reserveBiltyRange,
     createBilty,

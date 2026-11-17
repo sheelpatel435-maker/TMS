@@ -453,11 +453,57 @@ for (const [tag, path, summary, example, required] of resources) {
     spec.paths[`${path}/{id}`] = itemOps(tag, summary, example);
 }
 
+spec.paths["/api/bilties/copy-settings"] = {
+    get: secured(
+        "Bilty",
+        "Get company print-copy colors (Consignor/Consignee/Driver/Transport). Defaults created on first call."
+    ),
+    put: secured("Bilty", "Update choosable colors/labels for each bilty copy", {
+        requestBody: jsonBody({
+            copies: [
+                {
+                    copy_type: "CONSIGNOR",
+                    label: "Consignor Copy",
+                    color_hex: "#FFFFFF",
+                    color_name: "White",
+                    sort_order: 1
+                },
+                {
+                    copy_type: "CONSIGNEE",
+                    label: "Consignee Copy",
+                    color_hex: "#F8C8DC",
+                    color_name: "Pink",
+                    sort_order: 2
+                }
+            ]
+        })
+    })
+};
 spec.paths["/api/bilties/{id}/print"] = {
     get: secured(
         "Bilty",
-        "Print payload grouped into 5 LR sections (header, party/route, goods, freight, insurance/terms)",
-        { parameters: [idParam] }
+        "Print pages for selected copies. Query copies=ALL or copies=CONSIGNOR,DRIVER. Each page has color + page_break_after.",
+        {
+            parameters: [
+                idParam,
+                {
+                    name: "copies",
+                    in: "query",
+                    schema: { type: "string", example: "ALL" }
+                }
+            ]
+        }
+    ),
+    post: secured(
+        "Bilty",
+        "Same as GET print, but body can pass copies[] and one-off colors overrides",
+        {
+            parameters: [idParam],
+            requestBody: jsonBody({
+                copies: ["CONSIGNOR", "DRIVER"],
+                colors: { DRIVER: "#FFF59D" }
+            })
+        }
     )
 };
 
