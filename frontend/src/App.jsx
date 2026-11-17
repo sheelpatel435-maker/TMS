@@ -10,6 +10,9 @@ import Drivers from "./pages/Drivers";
 import Helpers from "./pages/Helpers";
 import Bilties from "./pages/Bilties";
 import Trips from "./pages/Trips";
+import Clients from "./pages/Clients";
+import Invoices from "./pages/Invoices";
+import Payments from "./pages/Payments";
 
 function RequireAuth({ children, adminOnly = false, superOnly = false }) {
   const { authed, isAdmin, isSuperAdmin } = useAuth();
@@ -120,6 +123,30 @@ function AppRoutes() {
           element={
             <RequireCompanyContext>
               <Trips />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="clients"
+          element={
+            <RequireCompanyContext>
+              <Clients />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="invoices"
+          element={
+            <RequireCompanyContext>
+              <Invoices />
+            </RequireCompanyContext>
+          }
+        />
+        <Route
+          path="payments"
+          element={
+            <RequireCompanyContext>
+              <Payments />
             </RequireCompanyContext>
           }
         />

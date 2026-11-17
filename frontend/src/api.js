@@ -101,6 +101,22 @@ export const endpoints = {
   helpers: () => api("/api/helpers?limit=100"),
   createHelper: (body) => api("/api/helpers", { method: "POST", body }),
   clients: () => api("/api/clients?limit=100"),
+  createClient: (body) => api("/api/clients", { method: "POST", body }),
+  deactivateClient: (id) => api(`/api/clients/${id}`, { method: "DELETE" }),
+  invoices: () => api("/api/invoices?limit=100"),
+  createInvoice: (body) => api("/api/invoices", { method: "POST", body }),
+  updateInvoiceStatus: (id, status) =>
+    api(`/api/invoices/${id}/status`, { method: "PATCH", body: { status } }),
+  payments: () => api("/api/invoice-payments?limit=100"),
+  createPayment: (body) =>
+    api("/api/invoice-payments", { method: "POST", body }),
+  updatePaymentStatus: (id, status) =>
+    api(`/api/invoice-payments/${id}/status`, {
+      method: "PATCH",
+      body: { status }
+    }),
+  createPaymentDeduction: (body) =>
+    api("/api/invoice-payment-deductions", { method: "POST", body }),
   vehicles: () => api("/api/vehicles?limit=100"),
   createVehicle: (body) => api("/api/vehicles", { method: "POST", body }),
   updateVehicle: (id, body) => api(`/api/vehicles/${id}`, { method: "PUT", body }),

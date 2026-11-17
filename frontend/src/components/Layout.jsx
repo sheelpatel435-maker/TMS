@@ -9,7 +9,10 @@ const links = [
   { to: "/drivers", label: "Drivers" },
   { to: "/helpers", label: "Helpers" },
   { to: "/bilties", label: "Bilty" },
-  { to: "/trips", label: "Trips" }
+  { to: "/trips", label: "Trips" },
+  { to: "/clients", label: "Clients" },
+  { to: "/invoices", label: "Invoices" },
+  { to: "/payments", label: "Payments" }
 ];
 
 export default function Layout() {
