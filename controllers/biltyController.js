@@ -1,15 +1,22 @@
 const biltyModel = require("../models/biltyModel");
+const companyModel = require("../models/companyModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
 const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { parseListFilters } = require("../utils/queryFilters");
 const { writeAudit } = require("../utils/audit");
+const { withTransaction } = require("../utils/transaction");
 const {
     assertTransition,
     isAllowedStatus,
     normalizeStatus
 } = require("../utils/statusTransitions");
+const {
+    normalizeBiltyPayload,
+    buildPrintPayload
+} = require("../utils/biltyFields");
+const { positiveInteger } = require("../utils/vehicleValidation");
 
 const getBilties = async (req, res) => {
     try {
@@ -33,7 +40,7 @@ const getBilties = async (req, res) => {
 const getBiltyById = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
-        const bilty = await biltyModel.getBiltyById(req.params.id, companyId);
+        const bilty = await biltyModel.getBiltyWithCharges(req.params.id, companyId);
 
         if (!bilty) {
             throw new HttpError(404, "Bilty not found");
@@ -42,6 +49,24 @@ const getBiltyById = async (req, res) => {
         return res.status(200).json({
             success: true,
             bilty
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const getBiltyPrint = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const bilty = await biltyModel.getBiltyWithCharges(req.params.id, companyId);
+        if (!bilty) {
+            throw new HttpError(404, "Bilty not found");
+        }
+
+        const company = await companyModel.getById(companyId);
+        return res.status(200).json({
+            success: true,
+            print: buildPrintPayload(bilty, company)
         });
     } catch (error) {
         return sendError(res, error);
@@ -157,10 +182,16 @@ const reserveBiltyRange = async (req, res) => {
     }
 };
 
+const assertBiltyRelations = async (companyId, data) => {
+    await assertOwned("clients", data.client_id, companyId, "Client");
+    await assertOwned("trips", data.trip_id, companyId, "Trip");
+    await assertOwned("vehicles", data.vehicle_id, companyId, "Vehicle");
+};
+
 const createBilty = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
-        const { bilty_number, client_id, trip_id, status } = req.body;
+        const { bilty_number, status } = req.body;
 
         if (isMissing(bilty_number)) {
             throw new HttpError(400, "Bilty number is required");
@@ -182,19 +213,47 @@ const createBilty = async (req, res) => {
             throw new HttpError(409, "Bilty number already exists");
         }
 
-        await assertOwned("clients", client_id, companyId, "Client");
-        await assertOwned("trips", trip_id, companyId, "Trip");
+        const data = normalizeBiltyPayload({ ...req.body, bilty_number });
+        data.bilty_number = String(bilty_number).trim();
+        data.status = biltyStatus;
 
-        const id = await biltyModel.createBilty(companyId, {
-            ...req.body,
-            status: biltyStatus
+        if (data.client_id) {
+            data.client_id = positiveInteger(data.client_id, "client_id");
+        }
+        if (data.trip_id) {
+            data.trip_id = positiveInteger(data.trip_id, "trip_id");
+        }
+        if (data.vehicle_id) {
+            data.vehicle_id = positiveInteger(data.vehicle_id, "vehicle_id");
+        }
+
+        await assertBiltyRelations(companyId, data);
+
+        const id = await withTransaction(async (connection) => {
+            const createdId = await biltyModel.createBilty(companyId, data, connection);
+            if (data.charges) {
+                await biltyModel.replaceBiltyCharges(
+                    companyId,
+                    createdId,
+                    data.charges,
+                    connection
+                );
+            }
+            await writeAudit(req, "BILTY_CREATED", "bilty", createdId, undefined, {
+                companyId,
+                connection,
+                required: true
+            });
+            return createdId;
         });
-        await writeAudit(req, "BILTY_CREATED", "bilty", id);
+
+        const bilty = await biltyModel.getBiltyWithCharges(id, companyId);
 
         return res.status(201).json({
             success: true,
             message: "Bilty created successfully",
-            id
+            id,
+            bilty
         });
     } catch (error) {
         return sendError(res, error);
@@ -204,9 +263,9 @@ const createBilty = async (req, res) => {
 const updateBilty = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
-        const { client_id, trip_id, status } = req.body;
+        const { status } = req.body;
 
-        const existing = await biltyModel.getBiltyById(req.params.id, companyId);
+        const existing = await biltyModel.getBiltyWithCharges(req.params.id, companyId);
 
         if (!existing) {
             throw new HttpError(404, "Bilty not found");
@@ -224,29 +283,59 @@ const updateBilty = async (req, res) => {
             assertTransition("bilty", existing.status, nextStatus);
         }
 
-        await assertOwned("clients", client_id, companyId, "Client");
-        await assertOwned("trips", trip_id, companyId, "Trip");
+        const data = normalizeBiltyPayload(req.body, existing);
+        data.bilty_number = existing.bilty_number;
+        data.status = nextStatus;
 
-        const updated = await biltyModel.updateBilty(req.params.id, companyId, {
-            ...req.body,
-            status: nextStatus
-        });
-
-        if (!updated) {
-            throw new HttpError(404, "Bilty not found");
+        if (data.client_id) {
+            data.client_id = positiveInteger(data.client_id, "client_id");
+        }
+        if (data.trip_id) {
+            data.trip_id = positiveInteger(data.trip_id, "trip_id");
+        }
+        if (data.vehicle_id) {
+            data.vehicle_id = positiveInteger(data.vehicle_id, "vehicle_id");
         }
 
-        await writeAudit(
-            req,
-            "BILTY_UPDATED",
-            "bilty",
-            req.params.id,
-            status ? `${existing.status} -> ${nextStatus}` : null
-        );
+        await assertBiltyRelations(companyId, data);
+
+        await withTransaction(async (connection) => {
+            const updated = await biltyModel.updateBilty(
+                req.params.id,
+                companyId,
+                data,
+                connection
+            );
+
+            if (!updated) {
+                throw new HttpError(404, "Bilty not found");
+            }
+
+            if (req.body.charges !== undefined) {
+                await biltyModel.replaceBiltyCharges(
+                    companyId,
+                    Number(req.params.id),
+                    data.charges || [],
+                    connection
+                );
+            }
+
+            await writeAudit(
+                req,
+                "BILTY_UPDATED",
+                "bilty",
+                req.params.id,
+                status ? `${existing.status} -> ${nextStatus}` : null,
+                { companyId, connection, required: true }
+            );
+        });
+
+        const bilty = await biltyModel.getBiltyWithCharges(req.params.id, companyId);
 
         return res.status(200).json({
             success: true,
-            message: "Bilty updated successfully"
+            message: "Bilty updated successfully",
+            bilty
         });
     } catch (error) {
         return sendError(res, error);
@@ -295,6 +384,7 @@ const deactivateBilty = async (req, res) => {
 module.exports = {
     getBilties,
     getBiltyById,
+    getBiltyPrint,
     reserveBilty,
     reserveBiltyRange,
     createBilty,

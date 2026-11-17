@@ -413,13 +413,53 @@ const resources = [
     ["Drivers", "/api/drivers", "driver", { name: "Ramesh", mobile: "9000000001" }, ["name", "mobile"]],
     ["Helpers", "/api/helpers", "helper", { name: "Suresh", mobile: "9000000002" }, ["name", "mobile"]],
     ["Clients", "/api/clients", "client", { name: "Acme Corp", mobile: "8111111111", gst_number: "27AAAAA0000A1Z5" }, ["name"]],
-    ["Bilty", "/api/bilties", "bilty", { bilty_number: "BLT-1001", client_id: 1, goods_description: "Steel", weight_kg: 500, packages: 10 }, ["bilty_number"]]
+    [
+        "Bilty",
+        "/api/bilties",
+        "bilty (5-section LR form)",
+        {
+            bilty_number: "68256",
+            bilty_date: "2026-09-10",
+            copy_type: "CONSIGNOR",
+            consignor: "Symphony Limited",
+            consignor_address: "Dadri",
+            consignee: "Gupta Electronics",
+            consignee_address: "Biharsharif",
+            pickup_location: "Dadri",
+            drop_location: "Biharsharif",
+            truck_no: "HR68C9561",
+            packages: 128,
+            packages_label: "CBOX",
+            goods_description: "Air Cooler",
+            weight_kg: 8040,
+            charged_weight_kg: 8040,
+            invoice_no: "GT26866714",
+            invoice_value: "AS PER INVOICE",
+            payment_mode: "TO_BE_BILLED",
+            gst_payer: "CONSIGNOR",
+            delivery_type: "DOOR_DELIVERY",
+            insurance_at_risk: "OWNER",
+            charges: [
+                { charge_type: "FREIGHT", amount: 0 },
+                { charge_type: "LABOUR", amount: 0 }
+            ]
+        },
+        ["bilty_number"]
+    ]
 ];
 
 for (const [tag, path, summary, example, required] of resources) {
     spec.paths[path] = crud(tag, summary, example, required);
     spec.paths[`${path}/{id}`] = itemOps(tag, summary, example);
 }
+
+spec.paths["/api/bilties/{id}/print"] = {
+    get: secured(
+        "Bilty",
+        "Print payload grouped into 5 LR sections (header, party/route, goods, freight, insurance/terms)",
+        { parameters: [idParam] }
+    )
+};
 
 spec.paths["/api/vehicle-documents"] = {
     get: secured("Vehicles", "List vehicle documents", { parameters: listParams }),

@@ -446,6 +446,49 @@ const ensureSchema = async () => {
         "DECIMAL(12,2) NULL DEFAULT NULL"
     );
 
+    // Physical LR / bilty 5-section fields
+    const biltyExtraColumns = [
+        ["bilty_date", "DATE NULL DEFAULT NULL"],
+        ["copy_type", "VARCHAR(30) NULL DEFAULT 'CONSIGNOR'"],
+        ["consignor_address", "VARCHAR(255) NULL DEFAULT NULL"],
+        ["consignee_address", "VARCHAR(255) NULL DEFAULT NULL"],
+        ["truck_no", "VARCHAR(50) NULL DEFAULT NULL"],
+        ["vehicle_id", "BIGINT UNSIGNED NULL DEFAULT NULL"],
+        ["charged_weight_kg", "DECIMAL(12,2) NULL DEFAULT NULL"],
+        ["packages_label", "VARCHAR(50) NULL DEFAULT NULL"],
+        ["rate_remark", "VARCHAR(150) NULL DEFAULT NULL"],
+        ["invoice_no", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["invoice_value", "VARCHAR(150) NULL DEFAULT NULL"],
+        ["payment_mode", "VARCHAR(30) NULL DEFAULT NULL"],
+        ["gst_payer", "VARCHAR(40) NULL DEFAULT NULL"],
+        ["delivery_type", "VARCHAR(30) NULL DEFAULT NULL"],
+        ["insurance_at_risk", "VARCHAR(30) NULL DEFAULT NULL"],
+        ["insurance_company", "VARCHAR(150) NULL DEFAULT NULL"],
+        ["insurance_policy_no", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["insurance_date", "DATE NULL DEFAULT NULL"],
+        ["insurance_amount", "DECIMAL(12,2) NULL DEFAULT NULL"],
+        ["total_amount", "DECIMAL(12,2) NULL DEFAULT NULL"],
+        ["terms_notes", "TEXT NULL"]
+    ];
+    for (const [column, definition] of biltyExtraColumns) {
+        await addColumnIfMissing("bilties", column, definition);
+    }
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS bilty_charges (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            bilty_id BIGINT UNSIGNED NOT NULL,
+            charge_type VARCHAR(40) NOT NULL,
+            amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_bilty_charges_company_bilty (company_id, bilty_id),
+            KEY idx_bilty_charges_type (charge_type)
+        )
+    `);
+
     await addColumnIfMissing(
         "clients",
         "billing_email",
