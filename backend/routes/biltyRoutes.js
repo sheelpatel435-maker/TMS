@@ -10,6 +10,11 @@ router.use(authMiddleware);
 router.get("/", requireModule("Bilty", "can_view"), controller.getBilties);
 router.post("/reserve", requireModule("Bilty", "can_create"), controller.reserveBilty);
 router.post("/reserve-range", requireModule("Bilty", "can_create"), controller.reserveBiltyRange);
+router.post(
+    "/prepare-form",
+    requireModule("Bilty", "can_create"),
+    controller.prepareNewBiltyForm
+);
 router.post("/", requireModule("Bilty", "can_create"), controller.createBilty);
 
 router.get(

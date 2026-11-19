@@ -462,7 +462,13 @@ for (const [tag, path, summary, example, required] of resources) {
 spec.paths["/api/bilties/reserve"] = {
     post: secured(
         "Bilty",
-        "Reserve next bilty number (auto from sequence if bilty_number omitted). Body optional: bilty_number, bilty_date."
+        "Reserve next bilty number (auto from sequence if bilty_number omitted). Body optional: bilty_number, bilty_date. Returns form.id + form.bilty_number for read-only display."
+    )
+};
+spec.paths["/api/bilties/prepare-form"] = {
+    post: secured(
+        "Bilty",
+        "Open new bilty form: allocates next number immediately (same as auto reserve). Call on form mount; show bilty_number read-only."
     )
 };
 spec.paths["/api/bilties/reserve-range"] = {

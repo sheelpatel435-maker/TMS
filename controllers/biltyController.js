@@ -281,15 +281,41 @@ const reserveBilty = async (req, res) => {
             return { id: createdId, bilty_number: number };
         });
 
+        const bilty = await biltyModel.getBiltyById(id, companyId);
+
         return res.status(201).json({
             success: true,
             message: "Bilty number reserved successfully",
             id,
-            bilty_number
+            bilty_number,
+            company_id: companyId,
+            bilty_date: bilty?.bilty_date || biltyDate,
+            status: "RESERVED",
+            reserved_by: bilty?.reserved_by || req.user?.id || null,
+            created_at: bilty?.created_at || null,
+            bilty,
+            // Form-open helper: number is ready to show read-only
+            form: {
+                id,
+                bilty_number,
+                company_id: companyId,
+                status: "RESERVED",
+                bilty_date: bilty?.bilty_date || biltyDate
+            }
         });
     } catch (error) {
         return sendError(res, error);
     }
+};
+
+/**
+ * Explicit "open new bilty form" — allocates number immediately so UI can show it.
+ * Same as reserve without manual number.
+ */
+const prepareNewBiltyForm = async (req, res) => {
+    req.body = { ...(req.body || {}) };
+    delete req.body.bilty_number;
+    return reserveBilty(req, res);
 };
 
 const expandRange = (from, to) => {
@@ -705,6 +731,7 @@ module.exports = {
     updateBiltySequence,
     reserveBilty,
     reserveBiltyRange,
+    prepareNewBiltyForm,
     createBilty,
     updateBilty,
     deactivateBilty
