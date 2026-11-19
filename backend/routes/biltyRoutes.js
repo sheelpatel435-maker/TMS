@@ -13,6 +13,17 @@ router.post("/reserve-range", requireModule("Bilty", "can_create"), controller.r
 router.post("/", requireModule("Bilty", "can_create"), controller.createBilty);
 
 router.get(
+    "/sequence",
+    requireModule("Bilty", "can_view"),
+    controller.getBiltySequence
+);
+router.put(
+    "/sequence",
+    requireModule("Bilty", "can_update"),
+    controller.updateBiltySequence
+);
+
+router.get(
     "/copy-settings",
     requireModule("Bilty", "can_view"),
     controller.getBiltyCopySettings

@@ -154,21 +154,17 @@ const normalizeBiltyPayload = (body, existing = null) => {
         total_amount = sumCharges(charges);
     }
 
+    // One bilty record = one LR. Copy type is print-only; ignore form copy_type.
+    const copy_type = existing?.copy_type
+        ? normalizeCopyType(existing.copy_type) === "OFFICE"
+            ? "TRANSPORT"
+            : normalizeCopyType(existing.copy_type) || "CONSIGNOR"
+        : "CONSIGNOR";
+
     return {
         bilty_number: trimOrNull(pick("bilty_number"), 50),
         bilty_date: isoDate(pick("bilty_date"), "bilty_date"),
-        copy_type: (() => {
-            const raw = pick("copy_type", "CONSIGNOR");
-            if (raw === undefined || raw === null || raw === "") return "CONSIGNOR";
-            const normalized = normalizeCopyType(raw);
-            if (!COPY_TYPES.has(normalized) && normalized !== "TRANSPORT") {
-                throw new HttpError(
-                    400,
-                    `copy_type must be one of: ${[...PRINT_COPY_TYPES].join(", ")}`
-                );
-            }
-            return normalized === "OFFICE" ? "TRANSPORT" : normalized;
-        })(),
+        copy_type,
         client_id: pick("client_id") || null,
         trip_id: pick("trip_id") || null,
         vehicle_id: pick("vehicle_id") || null,
@@ -190,8 +186,14 @@ const normalizeBiltyPayload = (body, existing = null) => {
         consignee_address: trimOrNull(pick("consignee_address"), 255),
         pickup_location: trimOrNull(pick("pickup_location"), 150),
         drop_location: trimOrNull(pick("drop_location"), 150),
+        delivery_office_address: trimOrNull(
+            pick("delivery_office_address"),
+            255
+        ),
+        from_no: trimOrNull(pick("from_no"), 100),
         invoice_no: trimOrNull(pick("invoice_no"), 100),
         invoice_value: trimOrNull(pick("invoice_value"), 150),
+        eway_bill_no: trimOrNull(pick("eway_bill_no"), 50),
         payment_mode: optionalEnum(
             pick("payment_mode"),
             PAYMENT_MODES,
@@ -216,8 +218,37 @@ const normalizeBiltyPayload = (body, existing = null) => {
             "insurance_amount"
         ),
         terms_notes: trimOrNull(pick("terms_notes"), 2000),
+        cancel_reason: trimOrNull(pick("cancel_reason"), 500),
         charges
     };
+};
+
+/** Mandatory fields before CONFIRMED / USED (photo LR). */
+const assertConfirmReady = (data) => {
+    const required = [
+        ["consignor", data.consignor],
+        ["consignee", data.consignee],
+        ["pickup_location", data.pickup_location],
+        ["drop_location", data.drop_location],
+        ["truck_no", data.truck_no],
+        ["packages", data.packages],
+        ["goods_description", data.goods_description],
+        ["weight_kg", data.weight_kg],
+        ["payment_mode", data.payment_mode],
+        ["invoice_no", data.invoice_no]
+    ];
+    const missing = required
+        .filter(([, value]) => value === undefined || value === null || value === "")
+        .map(([key]) => key);
+    if (missing.length) {
+        throw new HttpError(
+            400,
+            `Cannot confirm bilty; missing: ${missing.join(", ")}`
+        );
+    }
+    if (!Array.isArray(data.charges) || !data.charges.length) {
+        throw new HttpError(400, "Cannot confirm bilty; charges are required");
+    }
 };
 
 /**
@@ -252,8 +283,10 @@ const buildFullSections = (bilty, company = null, copyType = null) => ({
         consignee_address: bilty.consignee_address,
         from: bilty.pickup_location,
         to: bilty.drop_location,
+        delivery_office_address: bilty.delivery_office_address,
         truck_no: bilty.truck_no,
-        vehicle_id: bilty.vehicle_id
+        vehicle_id: bilty.vehicle_id,
+        delivery_type: bilty.delivery_type
     },
     goods: {
         packages: bilty.packages,
@@ -263,7 +296,9 @@ const buildFullSections = (bilty, company = null, copyType = null) => ({
         charged_weight_kg: bilty.charged_weight_kg,
         rate_remark: bilty.rate_remark,
         invoice_no: bilty.invoice_no,
-        invoice_value: bilty.invoice_value
+        invoice_value: bilty.invoice_value,
+        eway_bill_no: bilty.eway_bill_no,
+        from_no: bilty.from_no
     },
     freight: {
         charges: bilty.charges || [],
@@ -481,6 +516,7 @@ module.exports = {
     parseRequestedCopies,
     isHexColor,
     normalizeBiltyPayload,
+    assertConfirmReady,
     buildPrintPayload,
     sumCharges
 };

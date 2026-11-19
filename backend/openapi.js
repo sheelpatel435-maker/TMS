@@ -416,35 +416,41 @@ const resources = [
     [
         "Bilty",
         "/api/bilties",
-        "bilty (5-section LR form)",
+        "bilty (photo LR fields; copy_type is print-only, not a form field; bilty_number auto if omitted)",
         {
-            bilty_number: "68256",
             bilty_date: "2026-09-10",
-            copy_type: "CONSIGNOR",
             consignor: "Symphony Limited",
             consignor_address: "Dadri",
             consignee: "Gupta Electronics",
             consignee_address: "Biharsharif",
             pickup_location: "Dadri",
             drop_location: "Biharsharif",
+            delivery_office_address: null,
             truck_no: "HR68C9561",
             packages: 128,
             packages_label: "CBOX",
             goods_description: "Air Cooler",
             weight_kg: 8040,
             charged_weight_kg: 8040,
+            rate_remark: "E.T 34 Feet HQ SXL",
             invoice_no: "GT26866714",
             invoice_value: "AS PER INVOICE",
+            eway_bill_no: null,
+            from_no: null,
             payment_mode: "TO_BE_BILLED",
             gst_payer: "CONSIGNOR",
             delivery_type: "DOOR_DELIVERY",
             insurance_at_risk: "OWNER",
             charges: [
                 { charge_type: "FREIGHT", amount: 0 },
-                { charge_type: "LABOUR", amount: 0 }
+                { charge_type: "LABOUR", amount: 0 },
+                { charge_type: "SURCHARGE", amount: 0 },
+                { charge_type: "ST_CHARGE", amount: 0 },
+                { charge_type: "RISK_CHARGE", amount: 0 },
+                { charge_type: "GR_CHARGE", amount: 0 }
             ]
         },
-        ["bilty_number"]
+        []
     ]
 ];
 
@@ -453,6 +459,28 @@ for (const [tag, path, summary, example, required] of resources) {
     spec.paths[`${path}/{id}`] = itemOps(tag, summary, example);
 }
 
+spec.paths["/api/bilties/reserve"] = {
+    post: secured(
+        "Bilty",
+        "Reserve next bilty number (auto from sequence if bilty_number omitted). Body optional: bilty_number, bilty_date."
+    )
+};
+spec.paths["/api/bilties/reserve-range"] = {
+    post: secured(
+        "Bilty",
+        "Reserve many numbers. Prefer count (auto sequence), or from/to, or bilty_numbers[]."
+    )
+};
+spec.paths["/api/bilties/sequence"] = {
+    get: secured("Bilty", "Get company bilty number sequence (prefix, next_number, pad_width)"),
+    put: secured("Bilty", "Update company bilty number sequence", {
+        requestBody: jsonBody({
+            prefix: "",
+            next_number: 68257,
+            pad_width: 5
+        })
+    })
+};
 spec.paths["/api/bilties/copy-settings"] = {
     get: secured(
         "Bilty",
