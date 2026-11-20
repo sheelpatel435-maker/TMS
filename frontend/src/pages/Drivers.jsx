@@ -10,20 +10,20 @@ const empty = {
   password: ""
 };
 
-const dutyLabel = (row) => {
-  const availability = String(row.availability_status || "AVAILABLE").toUpperCase();
-  if (Number(row.status) !== 1 || availability === "INACTIVE") return "Inactive";
-  if (availability === "ON_LEAVE") return "On Leave";
-  if (availability === "ON_TRIP") return "On Trip";
-  if (availability === "ASSIGNED") return "Assigned";
-  return "Active";
+const statusLabel = (row) => (Number(row.status) === 1 ? "Active" : "Inactive");
+
+const availabilityLabel = (row) => {
+  const value = String(row.availability_status || "AVAILABLE").toUpperCase();
+  if (["AVAILABLE", "ASSIGNED", "ON_TRIP", "INACTIVE"].includes(value)) {
+    return value;
+  }
+  return "AVAILABLE";
 };
 
-const dutyClass = (label) => {
-  if (label === "Active") return "badge badge-ok";
-  if (label === "On Leave") return "badge badge-warn";
-  if (label === "On Trip") return "badge badge-info";
-  if (label === "Assigned") return "badge badge-info";
+const availabilityClass = (value) => {
+  if (value === "AVAILABLE") return "badge badge-ok";
+  if (value === "ASSIGNED") return "badge badge-info";
+  if (value === "ON_TRIP") return "badge badge-info";
   return "badge badge-muted";
 };
 
@@ -64,13 +64,7 @@ export default function Drivers() {
     setBusyId(id);
     try {
       await endpoints.setDriverDuty(id, duty);
-      setMsg(
-        duty === "ACTIVE"
-          ? "Driver marked Active (job ready)"
-          : duty === "ON_LEAVE"
-            ? "Driver marked On Leave"
-            : "Driver deactivated"
-      );
+      setMsg(duty === "ACTIVE" ? "Driver marked Active" : "Driver marked Inactive");
       await load();
     } catch (err) {
       setError(err.message);
@@ -85,7 +79,8 @@ export default function Drivers() {
         <div>
           <h1 style={{ margin: 0 }}>Drivers</h1>
           <p className="muted">
-            Active = job ke liye ready. On Leave / Inactive = trip assign nahi hoga.
+            Status = Active/Inactive. Availability = AVAILABLE / ASSIGNED / ON_TRIP /
+            INACTIVE.
           </p>
         </div>
       </div>
@@ -122,14 +117,16 @@ export default function Drivers() {
               <th>Name</th>
               <th>Mobile</th>
               <th>User ID</th>
-              <th>Job status</th>
+              <th>Status</th>
+              <th>Availability</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((d) => {
-              const label = dutyLabel(d);
-              const onTrip = label === "On Trip";
+              const active = Number(d.status) === 1;
+              const availability = availabilityLabel(d);
+              const onTrip = availability === "ON_TRIP";
               const busy = busyId === d.id;
               return (
                 <tr key={d.id}>
@@ -137,31 +134,28 @@ export default function Drivers() {
                   <td>{d.mobile}</td>
                   <td>{d.user_id || "—"}</td>
                   <td>
-                    <span className={dutyClass(label)}>{label}</span>
+                    <span className={active ? "badge badge-ok" : "badge badge-muted"}>
+                      {statusLabel(d)}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={availabilityClass(availability)}>
+                      {availability}
+                    </span>
                   </td>
                   <td>
                     <div className="actions" style={{ marginTop: 0 }}>
-                      {label !== "Active" && !onTrip ? (
+                      {!active && !onTrip ? (
                         <button
                           type="button"
                           className="btn btn-primary"
                           disabled={busy}
                           onClick={() => setDuty(d.id, "ACTIVE")}
                         >
-                          Set Active
+                          Activate
                         </button>
                       ) : null}
-                      {label !== "On Leave" && !onTrip ? (
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={busy}
-                          onClick={() => setDuty(d.id, "ON_LEAVE")}
-                        >
-                          On Leave
-                        </button>
-                      ) : null}
-                      {label !== "Inactive" && !onTrip ? (
+                      {active && !onTrip ? (
                         <button
                           type="button"
                           className="btn"
@@ -172,7 +166,7 @@ export default function Drivers() {
                         </button>
                       ) : null}
                       {onTrip ? (
-                        <span className="muted">Trip finish hone ke baad change hoga</span>
+                        <span className="muted">On trip — finish after trip ends</span>
                       ) : null}
                     </div>
                   </td>

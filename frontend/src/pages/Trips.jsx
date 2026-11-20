@@ -132,7 +132,7 @@ export default function Trips() {
                 .filter(
                   (d) =>
                     Number(d.status) === 1 &&
-                    !["ON_LEAVE", "INACTIVE", "ON_TRIP"].includes(
+                    !["INACTIVE", "ON_TRIP"].includes(
                       String(d.availability_status || "").toUpperCase()
                     )
                 )
@@ -154,7 +154,7 @@ export default function Trips() {
                 .filter(
                   (h) =>
                     Number(h.status) === 1 &&
-                    !["ON_LEAVE", "INACTIVE", "ON_TRIP"].includes(
+                    !["INACTIVE", "ON_TRIP"].includes(
                       String(h.availability_status || "").toUpperCase()
                     )
                 )
