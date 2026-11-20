@@ -9,11 +9,29 @@ const empty = {
   password: ""
 };
 
+const dutyLabel = (row) => {
+  const availability = String(row.availability_status || "AVAILABLE").toUpperCase();
+  if (Number(row.status) !== 1 || availability === "INACTIVE") return "Inactive";
+  if (availability === "ON_LEAVE") return "On Leave";
+  if (availability === "ON_TRIP") return "On Trip";
+  if (availability === "ASSIGNED") return "Assigned";
+  return "Active";
+};
+
+const dutyClass = (label) => {
+  if (label === "Active") return "badge badge-ok";
+  if (label === "On Leave") return "badge badge-warn";
+  if (label === "On Trip") return "badge badge-info";
+  if (label === "Assigned") return "badge badge-info";
+  return "badge badge-muted";
+};
+
 export default function Helpers() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(empty);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
   const load = () =>
     endpoints
@@ -39,13 +57,34 @@ export default function Helpers() {
     }
   };
 
+  const setDuty = async (id, duty) => {
+    setMsg("");
+    setError("");
+    setBusyId(id);
+    try {
+      await endpoints.setHelperDuty(id, duty);
+      setMsg(
+        duty === "ACTIVE"
+          ? "Helper marked Active (job ready)"
+          : duty === "ON_LEAVE"
+            ? "Helper marked On Leave"
+            : "Helper deactivated"
+      );
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div>
       <div className="topbar">
         <div>
           <h1 style={{ margin: 0 }}>Helpers</h1>
           <p className="muted">
-            Creates helper master + HELPER login (mobile + password / OTP).
+            Active = job ke liye ready. On Leave / Inactive = trip assign nahi hoga.
           </p>
         </div>
       </div>
@@ -81,20 +120,63 @@ export default function Helpers() {
               <th>Name</th>
               <th>Mobile</th>
               <th>User ID</th>
-              <th>Availability</th>
-              <th>Status</th>
+              <th>Job status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((h) => (
-              <tr key={h.id}>
-                <td>{h.name}</td>
-                <td>{h.mobile}</td>
-                <td>{h.user_id || "—"}</td>
-                <td>{h.availability_status || "AVAILABLE"}</td>
-                <td>{Number(h.status) === 1 ? "Active" : "Inactive"}</td>
-              </tr>
-            ))}
+            {rows.map((h) => {
+              const label = dutyLabel(h);
+              const onTrip = label === "On Trip";
+              const busy = busyId === h.id;
+              return (
+                <tr key={h.id}>
+                  <td>{h.name}</td>
+                  <td>{h.mobile}</td>
+                  <td>{h.user_id || "—"}</td>
+                  <td>
+                    <span className={dutyClass(label)}>{label}</span>
+                  </td>
+                  <td>
+                    <div className="actions" style={{ marginTop: 0 }}>
+                      {label !== "Active" && !onTrip ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={busy}
+                          onClick={() => setDuty(h.id, "ACTIVE")}
+                        >
+                          Set Active
+                        </button>
+                      ) : null}
+                      {label !== "On Leave" && !onTrip ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => setDuty(h.id, "ON_LEAVE")}
+                        >
+                          On Leave
+                        </button>
+                      ) : null}
+                      {label !== "Inactive" && !onTrip ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => setDuty(h.id, "INACTIVE")}
+                        >
+                          Deactivate
+                        </button>
+                      ) : null}
+                      {onTrip ? (
+                        <span className="muted">Trip finish hone ke baad change hoga</span>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

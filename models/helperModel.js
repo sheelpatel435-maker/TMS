@@ -162,6 +162,23 @@ const deactivateHelper = async (id, companyId) => {
     return result.affectedRows;
 };
 
+const setDutyStatus = async (id, companyId, { status, availability_status }) => {
+    const [result] = await db.execute(
+        `UPDATE helpers
+         SET status = ?,
+             availability_status = ?
+         WHERE id = ? AND company_id = ?`,
+        [
+            toTinyIntStatus(status, 1),
+            normalizeAvailability(availability_status, "AVAILABLE"),
+            id,
+            companyId
+        ]
+    );
+
+    return result.affectedRows;
+};
+
 module.exports = {
     getHelpers,
     getHelperById,
@@ -170,5 +187,6 @@ module.exports = {
     findHelperByMobile,
     updateHelper,
     setAvailability,
-    deactivateHelper
+    deactivateHelper,
+    setDutyStatus
 };

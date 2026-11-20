@@ -8,6 +8,7 @@ const { writeAudit } = require("../utils/audit");
 const { withTransaction } = require("../utils/transaction");
 const { createStaffLoginUser } = require("../utils/staffAccount");
 const { requireValidMobile } = require("../utils/userValidation");
+const { resolveDutyUpdate } = require("../utils/crewWorkflow");
 
 const requireCompany = (req) => resolveCompanyId(req);
 
@@ -221,10 +222,57 @@ const deactivateDriver = async (req, res) => {
     }
 };
 
+const setDriverDuty = async (req, res) => {
+    try {
+        const companyId = requireCompany(req);
+        const existing = await driverModel.getDriverById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        if (existing.availability_status === "ON_TRIP") {
+            throw new HttpError(
+                400,
+                "Cannot change duty while driver is on a trip"
+            );
+        }
+
+        const dutyUpdate = resolveDutyUpdate(req.body.duty || req.body.duty_status);
+        const updated = await driverModel.setDutyStatus(
+            req.params.id,
+            companyId,
+            dutyUpdate
+        );
+
+        if (!updated) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        await writeAudit(
+            req,
+            "DRIVER_DUTY_UPDATED",
+            "driver",
+            req.params.id,
+            `duty=${String(req.body.duty || req.body.duty_status || "").toUpperCase()}`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Driver duty updated successfully",
+            status: dutyUpdate.status,
+            availability_status: dutyUpdate.availability_status
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 module.exports = {
     getDrivers,
     getDriverById,
     createDriver,
     updateDriver,
-    deactivateDriver
+    deactivateDriver,
+    setDriverDuty
 };

@@ -5,8 +5,12 @@ const AVAILABILITY_STATUSES = Object.freeze([
     "AVAILABLE",
     "ASSIGNED",
     "ON_TRIP",
+    "ON_LEAVE",
     "INACTIVE"
 ]);
+
+/** Admin-settable duty states (ON_TRIP is system-managed via trips). */
+const DUTY_STATUSES = Object.freeze(["ACTIVE", "ON_LEAVE", "INACTIVE"]);
 
 /** Trip still holds the crew (not freed yet). */
 const OPEN_TRIP_STATUSES = Object.freeze([
@@ -43,9 +47,31 @@ const assertCrewAssignable = (person, label) => {
         throw new HttpError(400, `${label} is already on another trip`);
     }
 
+    if (person.availability_status === "ON_LEAVE") {
+        throw new HttpError(400, `${label} is on leave`);
+    }
+
     if (person.availability_status === "INACTIVE") {
         throw new HttpError(400, `${label} is not available`);
     }
+};
+
+const resolveDutyUpdate = (duty) => {
+    const value = String(duty || "").toUpperCase();
+
+    if (!DUTY_STATUSES.includes(value)) {
+        throw new HttpError(400, "duty must be ACTIVE, ON_LEAVE, or INACTIVE");
+    }
+
+    if (value === "ACTIVE") {
+        return { status: 1, availability_status: "AVAILABLE" };
+    }
+
+    if (value === "ON_LEAVE") {
+        return { status: 1, availability_status: "ON_LEAVE" };
+    }
+
+    return { status: 0, availability_status: "INACTIVE" };
 };
 
 const findOpenTripForCrew = async (
@@ -191,10 +217,12 @@ const syncCrewAvailabilityForTrip = async (companyId, trip, nextStatus) => {
 
 module.exports = {
     AVAILABILITY_STATUSES,
+    DUTY_STATUSES,
     OPEN_TRIP_STATUSES,
     ON_TRIP_STATUSES,
     assertCrewAssignable,
     assertCrewFreeForTrip,
     syncCrewAvailabilityForTrip,
-    setAvailability
+    setAvailability,
+    resolveDutyUpdate
 };

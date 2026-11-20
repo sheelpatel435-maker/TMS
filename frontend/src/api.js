@@ -98,8 +98,12 @@ export const endpoints = {
     api(`/api/user-module-access/${userId}`, { method: "PUT", body }),
   drivers: () => api("/api/drivers?limit=100"),
   createDriver: (body) => api("/api/drivers", { method: "POST", body }),
+  setDriverDuty: (id, duty) =>
+    api(`/api/drivers/${id}/duty`, { method: "PATCH", body: { duty } }),
   helpers: () => api("/api/helpers?limit=100"),
   createHelper: (body) => api("/api/helpers", { method: "POST", body }),
+  setHelperDuty: (id, duty) =>
+    api(`/api/helpers/${id}/duty`, { method: "PATCH", body: { duty } }),
   clients: () => api("/api/clients?limit=100"),
   createClient: (body) => api("/api/clients", { method: "POST", body }),
   deactivateClient: (id) => api(`/api/clients/${id}`, { method: "DELETE" }),
