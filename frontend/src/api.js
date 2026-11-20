@@ -147,7 +147,13 @@ export const endpoints = {
   fileUrl: (path) =>
     path?.startsWith("http") ? path : `${API_BASE}${path || ""}`,
   bilties: () => api("/api/bilties?limit=100"),
-  reserveBilty: (body) => api("/api/bilties/reserve", { method: "POST", body }),
+  bilty: (id) => api(`/api/bilties/${id}`),
+  reserveBilty: (body = {}) =>
+    api("/api/bilties/reserve", { method: "POST", body }),
+  reserveBiltyRange: (body = {}) =>
+    api("/api/bilties/reserve-range", { method: "POST", body }),
+  prepareBiltyForm: (body = {}) =>
+    api("/api/bilties/prepare-form", { method: "POST", body }),
   createBilty: (body) => api("/api/bilties", { method: "POST", body }),
   updateBilty: (id, body) => api(`/api/bilties/${id}`, { method: "PUT", body }),
   trips: () => api("/api/trips?limit=100"),

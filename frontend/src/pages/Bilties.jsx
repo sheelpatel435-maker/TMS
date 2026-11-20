@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { endpoints } from "../api";
 
 const empty = {
+  id: null,
   bilty_number: "",
+  company_id: "",
   client_id: "",
   consignor: "",
   consignee: "",
@@ -11,16 +13,18 @@ const empty = {
   goods_description: "",
   weight_kg: "",
   packages: "",
-  status: "DRAFT"
+  status: "RESERVED",
+  bilty_date: ""
 };
 
 export default function Bilties() {
   const [rows, setRows] = useState([]);
   const [clients, setClients] = useState([]);
-  const [reserveNo, setReserveNo] = useState("");
   const [form, setForm] = useState(empty);
+  const [rangeCount, setRangeCount] = useState(10);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [preparing, setPreparing] = useState(false);
 
   const load = async () => {
     const [bilties, clientData] = await Promise.all([
@@ -31,38 +35,117 @@ export default function Bilties() {
     setClients(clientData.clients || []);
   };
 
+  /** Form khulte hi number auto — prepare-form / reserve */
+  const openNewForm = async () => {
+    setMsg("");
+    setError("");
+    setPreparing(true);
+    try {
+      const data = await endpoints.prepareBiltyForm({});
+      const f = data.form || data;
+      setForm({
+        ...empty,
+        id: f.id || data.id,
+        bilty_number: f.bilty_number || data.bilty_number,
+        company_id: f.company_id || data.company_id || "",
+        status: f.status || "RESERVED",
+        bilty_date: (f.bilty_date || data.bilty_date || "").toString().slice(0, 10)
+      });
+      setMsg(`Bilty number ready: ${f.bilty_number || data.bilty_number}`);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPreparing(false);
+    }
+  };
+
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load()
+      .then(() => openNewForm())
+      .catch((e) => setError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const reserve = async (e) => {
-    e.preventDefault();
+  const reserveNext = async () => {
     setMsg("");
     setError("");
     try {
-      await endpoints.reserveBilty({ bilty_number: reserveNo });
-      setReserveNo("");
-      setMsg("Bilty number reserved");
+      const data = await endpoints.reserveBilty({});
+      setMsg(`Reserved ${data.bilty_number}`);
+      await load();
+      await openNewForm();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const reserveRange = async () => {
+    setMsg("");
+    setError("");
+    try {
+      const data = await endpoints.reserveBiltyRange({
+        count: Number(rangeCount)
+      });
+      setMsg(data.message || `Reserved ${data.reserved?.length || 0} number(s)`);
       await load();
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const create = async (e) => {
+  const save = async (e) => {
     e.preventDefault();
     setMsg("");
     setError("");
+    if (!form.id || !form.bilty_number) {
+      setError("Open form first so bilty number can be generated");
+      return;
+    }
     try {
-      await endpoints.createBilty({
-        ...form,
+      const payload = {
+        bilty_date: form.bilty_date || undefined,
         client_id: form.client_id ? Number(form.client_id) : undefined,
+        consignor: form.consignor || undefined,
+        consignee: form.consignee || undefined,
+        pickup_location: form.pickup_location || undefined,
+        drop_location: form.drop_location || undefined,
+        goods_description: form.goods_description || undefined,
         weight_kg: form.weight_kg ? Number(form.weight_kg) : undefined,
-        packages: form.packages ? Number(form.packages) : undefined
-      });
-      setForm(empty);
-      setMsg("Bilty created");
+        packages: form.packages ? Number(form.packages) : undefined,
+        status: form.status === "RESERVED" ? "DRAFT" : form.status
+      };
+      await endpoints.updateBilty(form.id, payload);
+      setMsg(`Saved ${form.bilty_number}`);
       await load();
+      await openNewForm();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const openReserved = async (row) => {
+    setError("");
+    try {
+      const data = await endpoints.bilty(row.id);
+      const b = data.bilty || row;
+      setForm({
+        ...empty,
+        id: b.id,
+        bilty_number: b.bilty_number,
+        company_id: b.company_id || "",
+        client_id: b.client_id || "",
+        consignor: b.consignor || "",
+        consignee: b.consignee || "",
+        pickup_location: b.pickup_location || "",
+        drop_location: b.drop_location || "",
+        goods_description: b.goods_description || "",
+        weight_kg: b.weight_kg ?? "",
+        packages: b.packages ?? "",
+        status: b.status || "RESERVED",
+        bilty_date: (b.bilty_date || "").toString().slice(0, 10)
+      });
+      setMsg(`Opened ${b.bilty_number}`);
     } catch (err) {
       setError(err.message);
     }
@@ -71,7 +154,7 @@ export default function Bilties() {
   const advance = async (row, status) => {
     setError("");
     try {
-      await endpoints.updateBilty(row.id, { ...row, status });
+      await endpoints.updateBilty(row.id, { status });
       setMsg(`Bilty ${row.bilty_number} → ${status}`);
       await load();
     } catch (err) {
@@ -85,47 +168,65 @@ export default function Bilties() {
         <div>
           <h1 style={{ margin: 0 }}>Bilty</h1>
           <p className="muted">
-            Flow: RESERVED → DRAFT → CONFIRMED / USED → CANCELLED
+            Form khulte hi number auto dikhega. Flow: RESERVED → DRAFT → CONFIRMED → USED
           </p>
+        </div>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={openNewForm}
+          disabled={preparing}
+        >
+          {preparing ? "Getting number…" : "New bilty form"}
+        </button>
+      </div>
+
+      <div className="card stack">
+        <h3>Reserve (optional bulk)</h3>
+        <div className="grid-2">
+          <label className="field">
+            <span>Range count</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={rangeCount}
+              onChange={(e) => setRangeCount(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="actions">
+          <button className="btn btn-ghost" type="button" onClick={reserveNext}>
+            Reserve next number
+          </button>
+          <button className="btn btn-primary" type="button" onClick={reserveRange}>
+            Reserve {rangeCount} numbers
+          </button>
         </div>
       </div>
 
-      <form className="card stack" onSubmit={reserve}>
-        <h3>Reserve bilty number</h3>
+      <form className="card stack" onSubmit={save}>
+        <h3>Bilty form</h3>
         <div className="grid-2">
           <label className="field">
-            <span>Bilty number</span>
-            <input
-              required
-              value={reserveNo}
-              onChange={(e) => setReserveNo(e.target.value)}
-            />
+            <span>Bilty number (auto)</span>
+            <input value={form.bilty_number || (preparing ? "…" : "")} readOnly required />
           </label>
-        </div>
-        <button className="btn btn-primary">Reserve</button>
-      </form>
-
-      <form className="card stack" onSubmit={create}>
-        <h3>Create / open bilty</h3>
-        <div className="grid-2">
           <label className="field">
-            <span>Bilty number</span>
-            <input
-              required
-              value={form.bilty_number}
-              onChange={(e) => setForm({ ...form, bilty_number: e.target.value })}
-            />
+            <span>Company id</span>
+            <input value={form.company_id || ""} readOnly />
           </label>
           <label className="field">
             <span>Status</span>
-            <select
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
-            >
-              <option value="DRAFT">DRAFT</option>
-              <option value="RESERVED">RESERVED</option>
-              <option value="CONFIRMED">CONFIRMED</option>
-            </select>
+            <input value={form.status} readOnly />
+          </label>
+          <label className="field">
+            <span>Bilty date</span>
+            <input
+              type="date"
+              value={form.bilty_date}
+              onChange={(e) => setForm({ ...form, bilty_date: e.target.value })}
+            />
           </label>
           <label className="field">
             <span>Client</span>
@@ -144,8 +245,8 @@ export default function Bilties() {
           {[
             ["consignor", "Consignor"],
             ["consignee", "Consignee"],
-            ["pickup_location", "Pickup"],
-            ["drop_location", "Destination"],
+            ["pickup_location", "From"],
+            ["drop_location", "To"],
             ["goods_description", "Goods"],
             ["weight_kg", "Weight (kg)"],
             ["packages", "Packages"]
@@ -159,7 +260,9 @@ export default function Bilties() {
             </label>
           ))}
         </div>
-        <button className="btn btn-primary">Save bilty</button>
+        <button className="btn btn-primary" disabled={!form.id}>
+          Save bilty
+        </button>
       </form>
 
       <div className="card">
@@ -183,18 +286,37 @@ export default function Bilties() {
                   {b.pickup_location || "?"} → {b.drop_location || "?"}
                 </td>
                 <td className="actions">
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => openReserved(b)}
+                  >
+                    Open
+                  </button>
                   {b.status === "RESERVED" ? (
-                    <button className="btn btn-ghost" type="button" onClick={() => advance(b, "DRAFT")}>
-                      Open draft
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => advance(b, "DRAFT")}
+                    >
+                      Mark draft
                     </button>
                   ) : null}
                   {["DRAFT", "CREATED"].includes(b.status) ? (
-                    <button className="btn btn-ghost" type="button" onClick={() => advance(b, "CONFIRMED")}>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => advance(b, "CONFIRMED")}
+                    >
                       Confirm
                     </button>
                   ) : null}
                   {b.status === "CONFIRMED" ? (
-                    <button className="btn btn-ghost" type="button" onClick={() => advance(b, "USED")}>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => advance(b, "USED")}
+                    >
                       Mark used
                     </button>
                   ) : null}

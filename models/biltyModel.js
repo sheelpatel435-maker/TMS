@@ -8,10 +8,11 @@ const BILTY_COLUMNS = `id, company_id, bilty_number, bilty_date, copy_type,
                   goods_description, weight_kg, charged_weight_kg, packages, packages_label,
                   rate_remark, freight_amount, total_amount,
                   consignor, consignor_address, consignee, consignee_address,
-                  pickup_location, drop_location,
-                  invoice_no, invoice_value, payment_mode, gst_payer, delivery_type,
+                  pickup_location, drop_location, delivery_office_address, from_no,
+                  invoice_no, invoice_value, eway_bill_no, payment_mode, gst_payer, delivery_type,
                   insurance_at_risk, insurance_company, insurance_policy_no,
-                  insurance_date, insurance_amount, terms_notes,
+                  insurance_date, insurance_amount, terms_notes, cancel_reason,
+                  reserved_by, created_by,
                   created_at, updated_at`;
 
 const CHARGE_COLUMNS = `id, company_id, bilty_id, charge_type, amount, created_at, updated_at`;
@@ -26,7 +27,8 @@ const getBilties = async (companyId, pagination, filters = {}) => {
             "consignor",
             "consignee",
             "truck_no",
-            "invoice_no"
+            "invoice_no",
+            "eway_bill_no"
         ]
     });
 
@@ -69,8 +71,8 @@ const getBiltyWithCharges = async (id, companyId, executor = db) => {
     return { ...bilty, charges };
 };
 
-const findByNumber = async (companyId, biltyNumber) => {
-    const [rows] = await db.execute(
+const findByNumber = async (companyId, biltyNumber, executor = db) => {
+    const [rows] = await executor.execute(
         `SELECT id
          FROM bilties
          WHERE company_id = ? AND bilty_number = ?
@@ -105,8 +107,11 @@ const biltyInsertValues = (companyId, data) => [
     data.consignee_address || null,
     data.pickup_location || null,
     data.drop_location || null,
+    data.delivery_office_address || null,
+    data.from_no || null,
     data.invoice_no || null,
     data.invoice_value || null,
+    data.eway_bill_no || null,
     data.payment_mode || null,
     data.gst_payer || null,
     data.delivery_type || null,
@@ -115,7 +120,10 @@ const biltyInsertValues = (companyId, data) => [
     data.insurance_policy_no || null,
     data.insurance_date || null,
     data.insurance_amount == null ? null : roundMoney(data.insurance_amount),
-    data.terms_notes || null
+    data.terms_notes || null,
+    data.cancel_reason || null,
+    data.reserved_by || null,
+    data.created_by || null
 ];
 
 const createBilty = async (companyId, data, executor = db) => {
@@ -145,8 +153,11 @@ const createBilty = async (companyId, data, executor = db) => {
             consignee_address,
             pickup_location,
             drop_location,
+            delivery_office_address,
+            from_no,
             invoice_no,
             invoice_value,
+            eway_bill_no,
             payment_mode,
             gst_payer,
             delivery_type,
@@ -155,9 +166,12 @@ const createBilty = async (companyId, data, executor = db) => {
             insurance_policy_no,
             insurance_date,
             insurance_amount,
-            terms_notes
+            terms_notes,
+            cancel_reason,
+            reserved_by,
+            created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         biltyInsertValues(companyId, data)
     );
 
@@ -216,8 +230,11 @@ const updateBilty = async (id, companyId, data, executor = db) => {
              consignee_address = ?,
              pickup_location = ?,
              drop_location = ?,
+             delivery_office_address = ?,
+             from_no = ?,
              invoice_no = ?,
              invoice_value = ?,
+             eway_bill_no = ?,
              payment_mode = ?,
              gst_payer = ?,
              delivery_type = ?,
@@ -226,7 +243,8 @@ const updateBilty = async (id, companyId, data, executor = db) => {
              insurance_policy_no = ?,
              insurance_date = ?,
              insurance_amount = ?,
-             terms_notes = ?
+             terms_notes = ?,
+             cancel_reason = ?
          WHERE id = ? AND company_id = ?`,
         [
             data.bilty_date || null,
@@ -250,8 +268,11 @@ const updateBilty = async (id, companyId, data, executor = db) => {
             data.consignee_address || null,
             data.pickup_location || null,
             data.drop_location || null,
+            data.delivery_office_address || null,
+            data.from_no || null,
             data.invoice_no || null,
             data.invoice_value || null,
+            data.eway_bill_no || null,
             data.payment_mode || null,
             data.gst_payer || null,
             data.delivery_type || null,
@@ -261,6 +282,7 @@ const updateBilty = async (id, companyId, data, executor = db) => {
             data.insurance_date || null,
             data.insurance_amount == null ? null : roundMoney(data.insurance_amount),
             data.terms_notes || null,
+            data.cancel_reason || null,
             id,
             companyId
         ]
@@ -269,13 +291,14 @@ const updateBilty = async (id, companyId, data, executor = db) => {
     return result.affectedRows;
 };
 
-const deactivateBilty = async (id, companyId) => {
+const deactivateBilty = async (id, companyId, cancelReason = null) => {
     const [result] = await db.execute(
         `UPDATE bilties
-         SET status = 'CANCELLED'
+         SET status = 'CANCELLED',
+             cancel_reason = COALESCE(?, cancel_reason)
          WHERE id = ? AND company_id = ?
          AND status NOT IN ('USED', 'COMPLETED')`,
-        [id, companyId]
+        [cancelReason || null, id, companyId]
     );
 
     return result.affectedRows;

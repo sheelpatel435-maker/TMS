@@ -468,11 +468,38 @@ const ensureSchema = async () => {
         ["insurance_date", "DATE NULL DEFAULT NULL"],
         ["insurance_amount", "DECIMAL(12,2) NULL DEFAULT NULL"],
         ["total_amount", "DECIMAL(12,2) NULL DEFAULT NULL"],
-        ["terms_notes", "TEXT NULL"]
+        ["terms_notes", "TEXT NULL"],
+        ["eway_bill_no", "VARCHAR(50) NULL DEFAULT NULL"],
+        ["delivery_office_address", "VARCHAR(255) NULL DEFAULT NULL"],
+        ["from_no", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["cancel_reason", "VARCHAR(500) NULL DEFAULT NULL"],
+        ["reserved_by", "BIGINT UNSIGNED NULL DEFAULT NULL"],
+        ["created_by", "BIGINT UNSIGNED NULL DEFAULT NULL"]
     ];
     for (const [column, definition] of biltyExtraColumns) {
         await addColumnIfMissing("bilties", column, definition);
     }
+
+    await addUniqueIfMissing(
+        "bilties",
+        "uq_bilties_company_number",
+        "(company_id, bilty_number)"
+    );
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS bilty_sequences (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            prefix VARCHAR(20) NOT NULL DEFAULT '',
+            next_number BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            pad_width INT NOT NULL DEFAULT 5,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_bilty_sequences_company (company_id)
+        )
+    `);
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS bilty_charges (
@@ -486,6 +513,24 @@ const ensureSchema = async () => {
             PRIMARY KEY (id),
             KEY idx_bilty_charges_company_bilty (company_id, bilty_id),
             KEY idx_bilty_charges_type (charge_type)
+        )
+    `);
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS bilty_copy_settings (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            copy_type VARCHAR(30) NOT NULL,
+            label VARCHAR(80) NOT NULL,
+            color_hex VARCHAR(7) NOT NULL DEFAULT '#FFFFFF',
+            color_name VARCHAR(40) NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            status TINYINT NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_bilty_copy_company_type (company_id, copy_type),
+            KEY idx_bilty_copy_company (company_id)
         )
     `);
 
