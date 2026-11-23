@@ -52,6 +52,23 @@ const createClient = async (req, res) => {
             throw new HttpError(400, "Client name is required");
         }
 
+        const mobile = req.body.mobile || null;
+        const gstNumber = req.body.gst_number || null;
+
+        if (mobile) {
+            const byMobile = await clientModel.findClientByMobile(companyId, mobile);
+            if (byMobile) {
+                throw new HttpError(409, "Client with this mobile number already exists");
+            }
+        }
+
+        if (gstNumber) {
+            const byGst = await clientModel.findClientByGst(companyId, gstNumber);
+            if (byGst) {
+                throw new HttpError(409, "Client with this GST number already exists");
+            }
+        }
+
         const id = await clientModel.createClient(companyId, {
             ...req.body,
             name
@@ -71,15 +88,67 @@ const createClient = async (req, res) => {
 const updateClient = async (req, res) => {
     try {
         const companyId = resolveCompanyId(req);
-        const name = firstPresent(req.body.name, req.body.client_name);
+        const existing = await clientModel.getClientById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Client not found");
+        }
+
+        const name = firstPresent(req.body.name, req.body.client_name, existing.name);
 
         if (isMissing(name)) {
             throw new HttpError(400, "Client name is required");
         }
 
+        const mobile =
+            req.body.mobile !== undefined ? req.body.mobile || null : existing.mobile;
+        const gstNumber =
+            req.body.gst_number !== undefined
+                ? req.body.gst_number || null
+                : existing.gst_number;
+
+        if (mobile) {
+            const byMobile = await clientModel.findClientByMobile(
+                companyId,
+                mobile,
+                req.params.id
+            );
+            if (byMobile) {
+                throw new HttpError(409, "Client with this mobile number already exists");
+            }
+        }
+
+        if (gstNumber) {
+            const byGst = await clientModel.findClientByGst(
+                companyId,
+                gstNumber,
+                req.params.id
+            );
+            if (byGst) {
+                throw new HttpError(409, "Client with this GST number already exists");
+            }
+        }
+
         const updated = await clientModel.updateClient(req.params.id, companyId, {
-            ...req.body,
-            name
+            name,
+            mobile,
+            email: req.body.email !== undefined ? req.body.email : existing.email,
+            billing_email:
+                req.body.billing_email !== undefined
+                    ? req.body.billing_email
+                    : existing.billing_email,
+            address:
+                req.body.address !== undefined ? req.body.address : existing.address,
+            gst_number: gstNumber,
+            state_code:
+                req.body.state_code !== undefined
+                    ? req.body.state_code
+                    : existing.state_code,
+            payment_terms:
+                req.body.payment_terms !== undefined
+                    ? req.body.payment_terms
+                    : existing.payment_terms,
+            status: req.body.status !== undefined ? req.body.status : existing.status
         });
 
         if (!updated) {

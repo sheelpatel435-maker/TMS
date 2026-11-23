@@ -35,6 +35,46 @@ const getClientById = async (id, companyId) => {
     return rows[0] || null;
 };
 
+const findClientByGst = async (companyId, gstNumber, excludeId = null) => {
+    if (!gstNumber) {
+        return null;
+    }
+
+    const params = [companyId, gstNumber];
+    let sql = `SELECT ${CLIENT_COLUMNS}
+               FROM clients
+               WHERE company_id = ? AND gst_number = ?`;
+
+    if (excludeId) {
+        sql += " AND id <> ?";
+        params.push(excludeId);
+    }
+
+    sql += " LIMIT 1";
+    const [rows] = await db.execute(sql, params);
+    return rows[0] || null;
+};
+
+const findClientByMobile = async (companyId, mobile, excludeId = null) => {
+    if (!mobile) {
+        return null;
+    }
+
+    const params = [companyId, mobile];
+    let sql = `SELECT ${CLIENT_COLUMNS}
+               FROM clients
+               WHERE company_id = ? AND mobile = ?`;
+
+    if (excludeId) {
+        sql += " AND id <> ?";
+        params.push(excludeId);
+    }
+
+    sql += " LIMIT 1";
+    const [rows] = await db.execute(sql, params);
+    return rows[0] || null;
+};
+
 const createClient = async (companyId, data) => {
     const [result] = await db.execute(
         `INSERT INTO clients
@@ -113,6 +153,8 @@ const deactivateClient = async (id, companyId) => {
 module.exports = {
     getClients,
     getClientById,
+    findClientByGst,
+    findClientByMobile,
     createClient,
     updateClient,
     deactivateClient

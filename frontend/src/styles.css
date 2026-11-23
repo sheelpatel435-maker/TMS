@@ -124,6 +124,10 @@ button, input, select, textarea {
   background: #243041;
   font-size: 0.78rem;
 }
+.badge-ok { background: #163528; color: #8dffb5; }
+.badge-warn { background: #3a2c12; color: #ffd27a; }
+.badge-info { background: #12283a; color: #8ecbff; }
+.badge-muted { background: #2a3038; color: #a8b0bb; }
 .login-wrap {
   min-height: 100vh;
   display: grid;

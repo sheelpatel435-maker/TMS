@@ -153,6 +153,23 @@ const deactivateDriver = async (id, companyId) => {
     return result.affectedRows;
 };
 
+const setDutyStatus = async (id, companyId, { status, availability_status }) => {
+    const [result] = await db.execute(
+        `UPDATE drivers
+         SET status = ?,
+             availability_status = ?
+         WHERE id = ? AND company_id = ?`,
+        [
+            toTinyIntStatus(status, 1),
+            normalizeAvailability(availability_status, "AVAILABLE"),
+            id,
+            companyId
+        ]
+    );
+
+    return result.affectedRows;
+};
+
 module.exports = {
     getDrivers,
     getDriverById,
@@ -161,5 +178,6 @@ module.exports = {
     findDriverByMobile,
     updateDriver,
     setAvailability,
-    deactivateDriver
+    deactivateDriver,
+    setDutyStatus
 };

@@ -608,11 +608,18 @@ export default function Vehicles() {
                       }
                     >
                       <option value="">Optional</option>
-                      {drivers.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
+                      {drivers
+                        .filter(
+                          (d) =>
+                            Number(d.status) === 1 &&
+                            String(d.availability_status || "").toUpperCase() !==
+                              "INACTIVE"
+                        )
+                        .map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label className="field">
@@ -624,11 +631,18 @@ export default function Vehicles() {
                       }
                     >
                       <option value="">Optional</option>
-                      {helpers.map((h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
-                        </option>
-                      ))}
+                      {helpers
+                        .filter(
+                          (h) =>
+                            Number(h.status) === 1 &&
+                            String(h.availability_status || "").toUpperCase() !==
+                              "INACTIVE"
+                        )
+                        .map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label className="field">

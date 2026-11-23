@@ -128,11 +128,19 @@ export default function Trips() {
               onChange={(e) => setForm({ ...form, driver_id: e.target.value })}
             >
               <option value="">Select</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
+              {drivers
+                .filter(
+                  (d) =>
+                    Number(d.status) === 1 &&
+                    !["INACTIVE", "ON_TRIP"].includes(
+                      String(d.availability_status || "").toUpperCase()
+                    )
+                )
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="field">
@@ -142,11 +150,19 @@ export default function Trips() {
               onChange={(e) => setForm({ ...form, helper_id: e.target.value })}
             >
               <option value="">Optional</option>
-              {helpers.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
+              {helpers
+                .filter(
+                  (h) =>
+                    Number(h.status) === 1 &&
+                    !["INACTIVE", "ON_TRIP"].includes(
+                      String(h.availability_status || "").toUpperCase()
+                    )
+                )
+                .map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="field">

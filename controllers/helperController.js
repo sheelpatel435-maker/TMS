@@ -8,6 +8,7 @@ const { writeAudit } = require("../utils/audit");
 const { withTransaction } = require("../utils/transaction");
 const { createStaffLoginUser } = require("../utils/staffAccount");
 const { requireValidMobile } = require("../utils/userValidation");
+const { resolveDutyUpdate } = require("../utils/crewWorkflow");
 
 const getHelperFilters = (query) => {
     const filters = {};
@@ -235,10 +236,51 @@ const deactivateHelper = async (req, res) => {
     }
 };
 
+const setHelperDuty = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const existing = await helperModel.getHelperById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Helper not found");
+        }
+
+        if (existing.availability_status === "ON_TRIP") {
+            throw new HttpError(
+                400,
+                "Cannot change duty while helper is on a trip"
+            );
+        }
+
+        const dutyUpdate = resolveDutyUpdate(req.body.duty || req.body.duty_status);
+        const updated = await helperModel.setDutyStatus(
+            req.params.id,
+            companyId,
+            dutyUpdate
+        );
+
+        if (!updated) {
+            throw new HttpError(404, "Helper not found");
+        }
+
+        await writeAudit(req, "HELPER_DUTY_UPDATED", "helper", req.params.id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Helper duty updated successfully",
+            status: dutyUpdate.status,
+            availability_status: dutyUpdate.availability_status
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 module.exports = {
     getHelpers,
     getHelperById,
     createHelper,
     updateHelper,
-    deactivateHelper
+    deactivateHelper,
+    setHelperDuty
 };

@@ -1,12 +1,16 @@
 const db = require("../config/db");
 const { HttpError } = require("./httpError");
 
+/** Documented crew availability: AVAILABLE | ASSIGNED | ON_TRIP | INACTIVE */
 const AVAILABILITY_STATUSES = Object.freeze([
     "AVAILABLE",
     "ASSIGNED",
     "ON_TRIP",
     "INACTIVE"
 ]);
+
+/** Admin Active/Inactive only (ON_TRIP / ASSIGNED are system-managed). */
+const DUTY_STATUSES = Object.freeze(["ACTIVE", "INACTIVE"]);
 
 /** Trip still holds the crew (not freed yet). */
 const OPEN_TRIP_STATUSES = Object.freeze([
@@ -46,6 +50,20 @@ const assertCrewAssignable = (person, label) => {
     if (person.availability_status === "INACTIVE") {
         throw new HttpError(400, `${label} is not available`);
     }
+};
+
+const resolveDutyUpdate = (duty) => {
+    const value = String(duty || "").toUpperCase();
+
+    if (!DUTY_STATUSES.includes(value)) {
+        throw new HttpError(400, "duty must be ACTIVE or INACTIVE");
+    }
+
+    if (value === "ACTIVE") {
+        return { status: 1, availability_status: "AVAILABLE" };
+    }
+
+    return { status: 0, availability_status: "INACTIVE" };
 };
 
 const findOpenTripForCrew = async (
@@ -191,10 +209,12 @@ const syncCrewAvailabilityForTrip = async (companyId, trip, nextStatus) => {
 
 module.exports = {
     AVAILABILITY_STATUSES,
+    DUTY_STATUSES,
     OPEN_TRIP_STATUSES,
     ON_TRIP_STATUSES,
     assertCrewAssignable,
     assertCrewFreeForTrip,
     syncCrewAvailabilityForTrip,
-    setAvailability
+    setAvailability,
+    resolveDutyUpdate
 };
