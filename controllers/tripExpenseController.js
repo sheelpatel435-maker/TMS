@@ -1,4 +1,5 @@
 const tripExpenseModel = require("../models/tripExpenseModel");
+const tripExpenseTypeModel = require("../models/tripExpenseTypeModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const {
@@ -9,6 +10,7 @@ const {
 const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { isAllowedStatus } = require("../utils/statusTransitions");
 const { writeAudit } = require("../utils/audit");
+const { publicFileUrl, validateUploadedFile } = require("../middleware/upload");
 
 const createExpense = async (req, res) => {
     try {
@@ -35,12 +37,29 @@ const createExpense = async (req, res) => {
 
         await assertOwned("trips", trip_id, companyId, "Trip");
 
+        const allowed = await tripExpenseTypeModel.isAllowedType(
+            companyId,
+            expense_type
+        );
+        if (!allowed) {
+            throw new HttpError(
+                400,
+                "Invalid expense_type; use GET /api/trip-expenses/types"
+            );
+        }
+
+        await validateUploadedFile(req.file);
+        let receipt = receipt_url || null;
+        if (req.file?.filename) {
+            receipt = publicFileUrl(req.file.filename);
+        }
+
         const expenseId = await tripExpenseModel.createExpense({
             company_id: companyId,
             trip_id,
-            expense_type,
+            expense_type: String(expense_type).trim().toUpperCase().replace(/[\s-]+/g, "_"),
             requested_amount: parsedAmount,
-            receipt_url: receipt_url || null,
+            receipt_url: receipt,
             remarks: remarks || null,
             submitted_by: req.user.id
         });

@@ -149,10 +149,22 @@ const updateStatus = async (id, companyId, status) => {
     return result.affectedRows;
 };
 
+const markVerified = async (id, companyId, verifiedBy) => {
+    const [result] = await db.execute(
+        `UPDATE trip_settlements
+         SET verified_by = ?,
+             verified_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND company_id = ?`,
+        [verifiedBy, id, companyId]
+    );
+    return result.affectedRows;
+};
+
 module.exports = {
     computeTotals,
     createSettlement,
     getSettlements,
     getSettlementById,
-    updateStatus
+    updateStatus,
+    markVerified
 };

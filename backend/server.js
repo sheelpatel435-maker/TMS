@@ -25,6 +25,7 @@ const tripAdvanceRoutes = require("./routes/tripAdvanceRoutes");
 const tripExpenseRoutes = require("./routes/tripExpenseRoutes");
 const tripFinalReportRoutes = require("./routes/tripFinalReportRoutes");
 const tripSettlementRoutes = require("./routes/tripSettlementRoutes");
+const tripDocumentRoutes = require("./routes/tripDocumentRoutes");
 const vehicleAssignmentRoutes = require("./routes/vehicleAssignmentRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
 const invoicePaymentRoutes = require("./routes/invoicePaymentRoutes");
@@ -177,6 +178,7 @@ app.use("/api/trip-advances", ...deskOnly, tripAdvanceRoutes);
 app.use("/api/trip-expenses", ...deskOnly, tripExpenseRoutes);
 app.use("/api/trip-final-reports", ...deskOnly, tripFinalReportRoutes);
 app.use("/api/trip-settlements", ...deskOnly, tripSettlementRoutes);
+app.use("/api/trip-documents", ...deskOnly, tripDocumentRoutes);
 app.use("/api/invoices", ...deskOnly, invoiceRoutes);
 app.use("/api/invoice-payments", ...deskOnly, invoicePaymentRoutes);
 app.use(

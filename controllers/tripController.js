@@ -1,5 +1,7 @@
 const tripModel = require("../models/tripModel");
 const tripStopModel = require("../models/tripStopModel");
+const tripBiltyModel = require("../models/tripBiltyModel");
+const tripDocumentModel = require("../models/tripDocumentModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing } = require("../utils/validation");
@@ -13,6 +15,25 @@ const {
     assertCrewFreeForTrip,
     syncCrewAvailabilityForTrip
 } = require("../utils/crewWorkflow");
+
+const resolveBiltyIds = (body) => {
+    if (Array.isArray(body?.bilty_ids) && body.bilty_ids.length) {
+        return body.bilty_ids.map((id) => Number(id)).filter(Boolean);
+    }
+    if (!isMissing(body?.bilty_id)) {
+        return [Number(body.bilty_id)].filter(Boolean);
+    }
+    return [];
+};
+
+const assertBiltiesOwned = async (companyId, biltyIds) => {
+    const bilties = [];
+    for (const biltyId of biltyIds) {
+        const bilty = await assertOwned("bilties", biltyId, companyId, "Bilty");
+        if (bilty) bilties.push(bilty);
+    }
+    return bilties;
+};
 
 const assertTripCrew = async (companyId, { driverId, helperId }, excludeTripId = null) => {
     const driver = await assertOwned("drivers", driverId, companyId, "Driver");
@@ -83,9 +104,25 @@ const getTripById = async (req, res) => {
             throw new HttpError(404, "Trip not found");
         }
 
+        const bilties = await tripBiltyModel.listByTrip(companyId, trip.id);
+        if (!bilties.length && trip.bilty_id) {
+            // legacy single bilty_id row
+            bilties.push({ bilty_id: trip.bilty_id });
+        }
+        const { rows: documents } = await tripDocumentModel.getByTrip(
+            companyId,
+            trip.id,
+            { page: 1, limit: 100, offset: 0 }
+        );
+
         return res.status(200).json({
             success: true,
-            trip
+            trip: {
+                ...trip,
+                bilty_ids: bilties.map((row) => row.bilty_id),
+                bilties,
+                documents
+            }
         });
     } catch (error) {
         return sendError(res, error);
@@ -99,7 +136,6 @@ const createTrip = async (req, res) => {
             vehicle_id,
             driver_id,
             helper_id,
-            bilty_id,
             client_id,
             source,
             destination,
@@ -119,27 +155,34 @@ const createTrip = async (req, res) => {
             throw new HttpError(400, "Invalid trip status");
         }
 
+        const biltyIds = resolveBiltyIds(req.body);
         const vehicle = await assertOwned("vehicles", vehicle_id, companyId, "Vehicle");
         await assertTripCrew(companyId, {
             driverId: driver_id,
             helperId: helper_id
         });
-        const bilty = await assertOwned("bilties", bilty_id, companyId, "Bilty");
+        const bilties = await assertBiltiesOwned(companyId, biltyIds);
         await assertOwned("clients", client_id, companyId, "Client");
-        assertLoadFitsVehicle(vehicle, bilty);
+        for (const bilty of bilties) {
+            assertLoadFitsVehicle(vehicle, bilty);
+        }
 
+        const primaryBiltyId = tripBiltyModel.primaryBiltyId(biltyIds);
         const id = await tripModel.createTrip(companyId, {
             ...req.body,
-            status: status || "DRAFT"
+            bilty_id: primaryBiltyId,
+            status: status || (primaryBiltyId ? "BILTY_LINKED" : "DRAFT")
         });
 
+        await tripBiltyModel.replaceForTrip(companyId, id, biltyIds);
         await saveStops(companyId, id, stops);
         await writeAudit(req, "TRIP_CREATED", "trip", id);
 
         return res.status(201).json({
             success: true,
             message: "Trip created successfully",
-            id
+            id,
+            bilty_ids: biltyIds
         });
     } catch (error) {
         return sendError(res, error);
@@ -163,7 +206,6 @@ const updateTrip = async (req, res) => {
             vehicle_id,
             driver_id,
             helper_id,
-            bilty_id,
             client_id,
             source,
             destination,
@@ -178,23 +220,32 @@ const updateTrip = async (req, res) => {
             throw new HttpError(400, "Source and destination are required");
         }
 
+        const biltyIds = resolveBiltyIds(req.body);
         const vehicle = await assertOwned("vehicles", vehicle_id, companyId, "Vehicle");
         await assertTripCrew(
             companyId,
             { driverId: driver_id, helperId: helper_id },
             trip.id
         );
-        const bilty = await assertOwned("bilties", bilty_id, companyId, "Bilty");
+        const bilties = await assertBiltiesOwned(companyId, biltyIds);
         await assertOwned("clients", client_id, companyId, "Client");
-        assertLoadFitsVehicle(vehicle, bilty);
+        for (const bilty of bilties) {
+            assertLoadFitsVehicle(vehicle, bilty);
+        }
 
-        await tripModel.updateTrip(req.params.id, companyId, req.body);
+        const primaryBiltyId = tripBiltyModel.primaryBiltyId(biltyIds);
+        await tripModel.updateTrip(req.params.id, companyId, {
+            ...req.body,
+            bilty_id: primaryBiltyId
+        });
+        await tripBiltyModel.replaceForTrip(companyId, trip.id, biltyIds);
         await saveStops(companyId, trip.id, stops);
         await writeAudit(req, "TRIP_UPDATED", "trip", req.params.id);
 
         return res.status(200).json({
             success: true,
-            message: "Trip updated successfully"
+            message: "Trip updated successfully",
+            bilty_ids: biltyIds
         });
     } catch (error) {
         return sendError(res, error);

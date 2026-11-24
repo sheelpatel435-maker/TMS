@@ -741,10 +741,11 @@ spec.paths["/api/vehicle-assignments/{id}/close"] = {
 
 spec.paths["/api/trips"] = crud(
     "Trips",
-    "trip",
+    "trip (supports bilty_id or bilty_ids[] for part-load)",
     {
         vehicle_id: 1,
         driver_id: 1,
+        bilty_ids: [1, 2],
         source: "Pune",
         destination: "Mumbai",
         stops: [{ city: "Lonavala", sequence: 1 }]
@@ -794,14 +795,38 @@ spec.paths["/api/trip-advances/{id}/status"] = statusPatch("Trips", "trip advanc
 
 spec.paths["/api/trip-expenses"] = crud(
     "Trips",
-    "trip expense",
+    "trip expense (optional multipart file receipt; type must be from /types)",
     { trip_id: 1, expense_type: "FUEL", requested_amount: 800 },
     ["trip_id", "expense_type", "requested_amount"]
 );
+spec.paths["/api/trip-expenses/types"] = {
+    get: secured("Trips", "List company expense types (fuel/toll/food… defaults seeded)"),
+    post: secured("Trips", "Add expense type", {
+        requestBody: jsonBody({ name: "FastTag", code: "FASTTAG" }, ["name"])
+    })
+};
+spec.paths["/api/trip-expenses/types/{id}"] = {
+    delete: secured("Trips", "Soft-deactivate expense type", { parameters: [idParam] })
+};
 spec.paths["/api/trip-expenses/{id}"] = {
     get: secured("Trips", "Get a trip expense", { parameters: [idParam] })
 };
 spec.paths["/api/trip-expenses/{id}/status"] = statusPatch("Trips", "trip expense", "APPROVED");
+
+spec.paths["/api/trip-documents"] = {
+    get: secured("Trips", "List trip documents (?trip_id=)", {
+        parameters: [{ name: "trip_id", in: "query", schema: { type: "integer" } }]
+    }),
+    post: secured(
+        "Trips",
+        "Upload trip document (multipart file + document_type + trip_id). Soft-delete only."
+    )
+};
+spec.paths["/api/trip-documents/{id}"] = {
+    delete: secured("Trips", "Soft-deactivate trip document (no hard delete)", {
+        parameters: [idParam]
+    })
+};
 
 spec.paths["/api/trip-final-reports"] = crud(
     "Trips",

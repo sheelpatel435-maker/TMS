@@ -132,13 +132,39 @@ const submitMyExpense = async (req, res) => {
         const trip = await tripModel.getTripById(trip_id, req.user.company_id);
         assertTripAssigned(trip, staff);
 
+        const tripExpenseTypeModel = require("../models/tripExpenseTypeModel");
+        const { publicFileUrl, validateUploadedFile } = require("../middleware/upload");
+
+        const allowed = await tripExpenseTypeModel.isAllowedType(
+            req.user.company_id,
+            expense_type
+        );
+        if (!allowed) {
+            throw new HttpError(400, "Invalid expense_type");
+        }
+
+        await validateUploadedFile(req.file);
+        let receipt = receipt_url || null;
+        if (req.file?.filename) {
+            receipt = publicFileUrl(req.file.filename);
+        }
+        if (
+            typeof receipt !== "string" ||
+            (!receipt.startsWith("/api/files/") && !/^https:\/\//i.test(receipt))
+        ) {
+            throw new HttpError(
+                400,
+                "Receipt photo/file is required (multipart file or HTTPS receipt_url)"
+            );
+        }
+
         const amount = requirePositiveAmount(requested_amount, "requested_amount");
         const expenseId = await tripExpenseModel.createExpense({
             company_id: req.user.company_id,
             trip_id,
-            expense_type,
+            expense_type: String(expense_type).trim().toUpperCase().replace(/[\s-]+/g, "_"),
             requested_amount: amount,
-            receipt_url: receipt_url || null,
+            receipt_url: receipt,
             remarks: remarks || null,
             submitted_by: req.user.id
         });

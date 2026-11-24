@@ -113,6 +113,14 @@ const updateStatus = async (req, res) => {
                 mapped
             );
 
+            if (mapped === "SETTLED" || mapped === "CARRY_FORWARD") {
+                await tripSettlementModel.markVerified(
+                    req.params.id,
+                    companyId,
+                    req.user.id
+                );
+            }
+
             if (mapped === "CARRY_FORWARD") {
                 const trip = await tripModel.getTripById(
                     settlement.trip_id,
@@ -137,11 +145,19 @@ const updateStatus = async (req, res) => {
             }
         });
 
-        await writeAudit(req, "SETTLEMENT_STATUS_UPDATED", "trip_settlement", req.params.id);
+        await writeAudit(
+            req,
+            "SETTLEMENT_STATUS_UPDATED",
+            "trip_settlement",
+            req.params.id,
+            `${settlement.status} -> ${mapped} by user ${req.user.id}`
+        );
 
         return res.status(200).json({
             success: true,
-            message: "Settlement status updated successfully"
+            message: "Settlement status updated successfully",
+            verified_by: req.user.id,
+            status: mapped
         });
     } catch (error) {
         return sendError(res, error);
