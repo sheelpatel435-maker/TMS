@@ -16,6 +16,11 @@ router.patch(
     requireModule("Drivers", "can_update"),
     controller.setDriverDuty
 );
+router.patch(
+    "/:id/password",
+    requireModule("Drivers", "can_update"),
+    controller.setDriverPassword
+);
 router.delete("/:id", requireModule("Drivers", "can_delete"), controller.deactivateDriver);
 
 module.exports = router;

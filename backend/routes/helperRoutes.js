@@ -16,6 +16,11 @@ router.patch(
     requireModule("Helpers", "can_update"),
     controller.setHelperDuty
 );
+router.patch(
+    "/:id/password",
+    requireModule("Helpers", "can_update"),
+    controller.setHelperPassword
+);
 router.delete("/:id", requireModule("Helpers", "can_delete"), controller.deactivateHelper);
 
 module.exports = router;

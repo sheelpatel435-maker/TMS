@@ -6,9 +6,12 @@ const { isMissing } = require("../utils/validation");
 const { resolveCompanyId } = require("../utils/companyScope");
 const { writeAudit } = require("../utils/audit");
 const { withTransaction } = require("../utils/transaction");
+const bcrypt = require("bcryptjs");
+const userModel = require("../models/userModel");
 const { createStaffLoginUser } = require("../utils/staffAccount");
 const { requireValidMobile } = require("../utils/userValidation");
 const { resolveDutyUpdate } = require("../utils/crewWorkflow");
+const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
 
 const requireCompany = (req) => resolveCompanyId(req);
 
@@ -71,7 +74,14 @@ const getDriverById = async (req, res) => {
 const createDriver = async (req, res) => {
     try {
         const companyId = requireCompany(req);
-        const { name, mobile, license_number, password } = req.body;
+        const {
+            name,
+            mobile,
+            license_number,
+            license_issue_date,
+            license_expiry_date,
+            password
+        } = req.body;
 
         if (isMissing(name) || isMissing(mobile)) {
             throw new HttpError(400, "Name and mobile are required");
@@ -123,6 +133,9 @@ const createDriver = async (req, res) => {
             await driverDocumentModel.createDriverDocument(companyId, id, {
                 document_type: "LICENSE",
                 document_number: license_number,
+                issue_date: license_issue_date || null,
+                expiry_date: license_expiry_date || null,
+                document_url: req.body.license_document_url || null,
                 status: 1
             });
         }
@@ -132,6 +145,41 @@ const createDriver = async (req, res) => {
             message: "Driver created successfully with mobile login",
             id,
             user_id: userId
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const setDriverPassword = async (req, res) => {
+    try {
+        const companyId = requireCompany(req);
+        const existing = await driverModel.getDriverById(req.params.id, companyId);
+
+        if (!existing) {
+            throw new HttpError(404, "Driver not found");
+        }
+
+        if (!existing.user_id) {
+            throw new HttpError(400, "Driver has no login account");
+        }
+
+        const newPassword = assertStrongPassword(
+            req.body.new_password || req.body.password
+        );
+        const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+        await userModel.updatePassword(existing.user_id, passwordHash);
+        await writeAudit(
+            req,
+            "DRIVER_PASSWORD_CHANGED",
+            "driver",
+            req.params.id,
+            "Admin set driver password"
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Driver password updated successfully"
         });
     } catch (error) {
         return sendError(res, error);
@@ -274,5 +322,6 @@ module.exports = {
     createDriver,
     updateDriver,
     deactivateDriver,
-    setDriverDuty
+    setDriverDuty,
+    setDriverPassword
 };

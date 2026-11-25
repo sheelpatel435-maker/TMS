@@ -98,12 +98,56 @@ export const endpoints = {
     api(`/api/user-module-access/${userId}`, { method: "PUT", body }),
   drivers: () => api("/api/drivers?limit=100"),
   createDriver: (body) => api("/api/drivers", { method: "POST", body }),
+  updateDriver: (id, body) => api(`/api/drivers/${id}`, { method: "PUT", body }),
   setDriverDuty: (id, duty) =>
     api(`/api/drivers/${id}/duty`, { method: "PATCH", body: { duty } }),
+  setDriverPassword: (id, new_password) =>
+    api(`/api/drivers/${id}/password`, {
+      method: "PATCH",
+      body: { new_password }
+    }),
+  changePassword: (body) =>
+    api("/api/password/change", { method: "POST", body }),
+  driverDocuments: (driverId) =>
+    api(`/api/driver-documents/${driverId}?limit=100`),
+  createDriverDocument: (driverId, formData) =>
+    api(`/api/driver-documents/${driverId}`, {
+      method: "POST",
+      formData
+    }),
+  updateDriverDocument: (id, formData) =>
+    api(`/api/driver-documents/${id}`, { method: "PUT", formData }),
+  deactivateDriverDocument: (id) =>
+    api(`/api/driver-documents/${id}`, { method: "DELETE" }),
+  driverAssignmentHistory: (driverId) =>
+    api(
+      `/api/vehicle-assignments/history?driver_id=${driverId}&limit=100`
+    ),
   helpers: () => api("/api/helpers?limit=100"),
   createHelper: (body) => api("/api/helpers", { method: "POST", body }),
+  updateHelper: (id, body) => api(`/api/helpers/${id}`, { method: "PUT", body }),
   setHelperDuty: (id, duty) =>
     api(`/api/helpers/${id}/duty`, { method: "PATCH", body: { duty } }),
+  setHelperPassword: (id, new_password) =>
+    api(`/api/helpers/${id}/password`, {
+      method: "PATCH",
+      body: { new_password }
+    }),
+  helperDocuments: (helperId) =>
+    api(`/api/helper-documents/${helperId}?limit=100`),
+  createHelperDocument: (helperId, formData) =>
+    api(`/api/helper-documents/${helperId}`, {
+      method: "POST",
+      formData
+    }),
+  updateHelperDocument: (id, formData) =>
+    api(`/api/helper-documents/${id}`, { method: "PUT", formData }),
+  deactivateHelperDocument: (id) =>
+    api(`/api/helper-documents/${id}`, { method: "DELETE" }),
+  helperAssignmentHistory: (helperId) =>
+    api(
+      `/api/vehicle-assignments/history?helper_id=${helperId}&limit=100`
+    ),
   clients: () => api("/api/clients?limit=100"),
   createClient: (body) => api("/api/clients", { method: "POST", body }),
   deactivateClient: (id) => api(`/api/clients/${id}`, { method: "DELETE" }),
