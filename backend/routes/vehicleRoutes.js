@@ -36,6 +36,12 @@ router.put(
     requireModule("Vehicles", "can_update"),
     controller.updateVehicle
 );
+router.patch(
+    "/:id/status",
+    requireVehicleId,
+    requireModule("Vehicles", "can_update"),
+    controller.setVehicleStatus
+);
 router.delete(
     "/:id",
     requireVehicleId,

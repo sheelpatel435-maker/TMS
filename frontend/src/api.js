@@ -168,6 +168,11 @@ export const endpoints = {
   vehicles: () => api("/api/vehicles?limit=100"),
   createVehicle: (body) => api("/api/vehicles", { method: "POST", body }),
   updateVehicle: (id, body) => api(`/api/vehicles/${id}`, { method: "PUT", body }),
+  setVehicleStatus: (id, status) =>
+    api(`/api/vehicles/${id}/status`, {
+      method: "PATCH",
+      body: { status }
+    }),
   vehicleTripHistory: (id) => api(`/api/vehicles/${id}/trip-history?limit=50`),
   vehicleTypes: () => api("/api/vehicle-types?limit=100"),
   createVehicleType: (body) => api("/api/vehicle-types", { method: "POST", body }),

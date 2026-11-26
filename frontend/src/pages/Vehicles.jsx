@@ -132,6 +132,24 @@ export default function Vehicles() {
     }
   };
 
+  const setVehicleStatus = async (id, status) => {
+    setError("");
+    setMsg("");
+    try {
+      await endpoints.setVehicleStatus(id, status);
+      setMsg(
+        status === "ACTIVE" || status === 1
+          ? "Vehicle marked Active"
+          : status === "MAINTENANCE" || status === 2
+            ? "Vehicle marked Maintenance"
+            : "Vehicle marked Inactive"
+      );
+      await loadCore();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const uploadDoc = async (e) => {
     e.preventDefault();
     if (!selectedId) return setError("Select a vehicle first");
@@ -362,32 +380,58 @@ export default function Vehicles() {
             </tr>
           </thead>
           <tbody>
-            {vehicles.map((v) => (
-              <tr key={v.id}>
-                <td>{v.registration_no}</td>
-                <td>
-                  {v.make} {v.model}
-                </td>
-                <td>{v.capacity ?? "—"}</td>
-                <td>{v.ownership || "—"}</td>
-                <td>
-                  <span className="badge">{statusLabel(v.status)}</span>
-                </td>
-                <td>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    onClick={() => {
-                      setSelectedId(String(v.id));
-                      setAssignForm((f) => ({ ...f, vehicle_id: String(v.id) }));
-                      setTab("docs");
-                    }}
-                  >
-                    Manage
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {vehicles.map((v) => {
+              const status = Number(v.status);
+              return (
+                <tr key={v.id}>
+                  <td>{v.registration_no}</td>
+                  <td>
+                    {v.make} {v.model}
+                  </td>
+                  <td>{v.capacity ?? "—"}</td>
+                  <td>{v.ownership || "—"}</td>
+                  <td>
+                    <span className="badge">{statusLabel(v.status)}</span>
+                  </td>
+                  <td>
+                    <div className="actions" style={{ marginTop: 0 }}>
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        onClick={() => {
+                          setSelectedId(String(v.id));
+                          setAssignForm((f) => ({
+                            ...f,
+                            vehicle_id: String(v.id)
+                          }));
+                          setTab("docs");
+                        }}
+                      >
+                        Manage
+                      </button>
+                      {status !== 1 ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => setVehicleStatus(v.id, "ACTIVE")}
+                        >
+                          Activate
+                        </button>
+                      ) : null}
+                      {status !== 0 ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setVehicleStatus(v.id, "INACTIVE")}
+                        >
+                          Deactivate
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -399,6 +443,24 @@ export default function Vehicles() {
             <span className="badge">{statusLabel(selected.status)}</span>
           </h3>
           <div className="actions">
+            {Number(selected.status) !== 1 ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setVehicleStatus(selected.id, "ACTIVE")}
+              >
+                Activate
+              </button>
+            ) : null}
+            {Number(selected.status) !== 0 ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setVehicleStatus(selected.id, "INACTIVE")}
+              >
+                Deactivate
+              </button>
+            ) : null}
             <button
               type="button"
               className={`btn ${tab === "docs" ? "btn-primary" : "btn-ghost"}`}

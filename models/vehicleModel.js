@@ -202,6 +202,22 @@ const deactivateVehicle = async (id, companyId, executor = db) => {
     return result.affectedRows;
 };
 
+const setVehicleStatus = async (id, companyId, nextStatus, executor = db) => {
+    const status = vehicleStatus(nextStatus);
+    if (status === VEHICLE_STATUSES.INACTIVE) {
+        await assertVehicleCanBeInactive(id, companyId, executor);
+    }
+
+    const [result] = await executor.execute(
+        `UPDATE vehicles
+         SET status = ?
+         WHERE id = ? AND company_id = ?`,
+        [status, id, companyId]
+    );
+
+    return result.affectedRows;
+};
+
 const getMyAssignedVehicle = async (user, executor = db) => {
     const isDriver = user.user_type === "DRIVER";
     const relationTable = isDriver ? "drivers" : "helpers";
@@ -250,5 +266,6 @@ module.exports = {
     createVehicle,
     updateVehicle,
     deactivateVehicle,
+    setVehicleStatus,
     getMyAssignedVehicle
 };

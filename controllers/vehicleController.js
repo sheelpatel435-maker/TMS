@@ -8,8 +8,15 @@ const { writeAudit } = require("../utils/audit");
 const { withTransaction } = require("../utils/transaction");
 const {
     positiveInteger,
-    vehicleStatus
+    vehicleStatus,
+    VEHICLE_STATUSES
 } = require("../utils/vehicleValidation");
+
+const STATUS_LABEL = Object.freeze({
+    [VEHICLE_STATUSES.INACTIVE]: "INACTIVE",
+    [VEHICLE_STATUSES.ACTIVE]: "ACTIVE",
+    [VEHICLE_STATUSES.MAINTENANCE]: "MAINTENANCE"
+});
 
 const validateVehicleBody = (body, defaultStatus) => {
     const vehicle_type_id = positiveInteger(body.vehicle_type_id, "vehicle_type_id");
@@ -209,6 +216,58 @@ const deactivateVehicle = async (req, res) => {
     }
 };
 
+const setVehicleStatus = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const id = positiveInteger(req.params.id, "id");
+        const existing = await vehicleModel.getVehicleById(id, companyId);
+        if (!existing) {
+            throw new HttpError(404, "Vehicle not found");
+        }
+
+        const rawStatus =
+            req.body.status !== undefined
+                ? req.body.status
+                : req.body.duty !== undefined
+                  ? req.body.duty
+                  : null;
+
+        if (rawStatus === null || rawStatus === undefined || rawStatus === "") {
+            throw new HttpError(400, "status is required (ACTIVE, INACTIVE, or MAINTENANCE)");
+        }
+
+        const nextStatus = vehicleStatus(rawStatus);
+        await withTransaction(async (connection) => {
+            const updated = await vehicleModel.setVehicleStatus(
+                id,
+                companyId,
+                nextStatus,
+                connection
+            );
+            if (!updated) {
+                throw new HttpError(404, "Vehicle not found");
+            }
+            await writeAudit(
+                req,
+                "VEHICLE_STATUS_CHANGED",
+                "vehicle",
+                id,
+                STATUS_LABEL[nextStatus] || String(nextStatus),
+                { companyId, connection, required: true }
+            );
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Vehicle status updated successfully",
+            status: nextStatus,
+            status_label: STATUS_LABEL[nextStatus] || String(nextStatus)
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
 const getMyAssignedVehicle = async (req, res) => {
     try {
         const vehicle = await vehicleModel.getMyAssignedVehicle(req.user);
@@ -228,5 +287,6 @@ module.exports = {
     getMyAssignedVehicle,
     createVehicle,
     updateVehicle,
-    deactivateVehicle
+    deactivateVehicle,
+    setVehicleStatus
 };
