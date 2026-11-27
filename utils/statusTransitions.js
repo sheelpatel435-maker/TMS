@@ -1,8 +1,10 @@
 const { HttpError } = require("./httpError");
 
 const TRANSITIONS = {
+    // BRD: Draft → Approve → Email/PDF (SENT) → Partial/Paid
     invoice: {
-        DRAFT: ["SENT", "CANCELLED"],
+        DRAFT: ["APPROVED", "SENT", "CANCELLED"],
+        APPROVED: ["SENT", "CANCELLED"],
         SENT: ["PARTIAL", "PAID", "CANCELLED"],
         PARTIAL: ["PAID", "CANCELLED"],
         PAID: ["CANCELLED"],

@@ -549,6 +549,21 @@ const ensureSchema = async () => {
         "payment_terms",
         "VARCHAR(100) NULL DEFAULT NULL"
     );
+    await addColumnIfMissing(
+        "clients",
+        "contact_person",
+        "VARCHAR(150) NULL DEFAULT NULL"
+    );
+    await addColumnIfMissing(
+        "clients",
+        "invoice_email_recipients",
+        "TEXT NULL"
+    );
+    await addColumnIfMissing(
+        "clients",
+        "tax_preference",
+        "VARCHAR(20) NULL DEFAULT 'AUTO'"
+    );
 
     await addColumnIfMissing(
         "trip_settlements",
@@ -561,6 +576,62 @@ const ensureSchema = async () => {
         "hsn_sac",
         "VARCHAR(20) NULL DEFAULT '996791'"
     );
+
+    for (const [column, definition] of [
+        ["consignor_name", "VARCHAR(200) NULL DEFAULT NULL"],
+        ["consignor_invoice_no", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["consignor_invoice_date", "DATE NULL DEFAULT NULL"],
+        ["from_location", "VARCHAR(200) NULL DEFAULT NULL"],
+        ["destination", "VARCHAR(200) NULL DEFAULT NULL"],
+        ["vehicle_type", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["vehicle_number", "VARCHAR(50) NULL DEFAULT NULL"],
+        ["gr_lr_number", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["reporting_date", "DATE NULL DEFAULT NULL"],
+        ["delivery_date", "DATE NULL DEFAULT NULL"],
+        ["quantity", "DECIMAL(12,3) NULL DEFAULT NULL"],
+        ["quantity_unit", "VARCHAR(30) NULL DEFAULT NULL"]
+    ]) {
+        await addColumnIfMissing("invoice_items", column, definition);
+    }
+
+    for (const [column, definition] of [
+        [
+            "service_description",
+            "VARCHAR(255) NULL DEFAULT 'Transportation of Goods by Road'"
+        ],
+        ["hsn_sac", "VARCHAR(20) NULL DEFAULT '996791'"],
+        ["payment_terms", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["approved_at", "DATETIME NULL DEFAULT NULL"],
+        ["approved_by", "BIGINT UNSIGNED NULL DEFAULT NULL"],
+        ["pdf_generated_at", "DATETIME NULL DEFAULT NULL"],
+        ["email_sent_at", "DATETIME NULL DEFAULT NULL"]
+    ]) {
+        await addColumnIfMissing("invoices", column, definition);
+    }
+
+    for (const [column, definition] of [
+        ["bank_name", "VARCHAR(150) NULL DEFAULT NULL"],
+        ["bank_account", "VARCHAR(100) NULL DEFAULT NULL"],
+        ["remarks", "VARCHAR(500) NULL DEFAULT NULL"]
+    ]) {
+        await addColumnIfMissing("invoice_payments", column, definition);
+    }
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS invoice_delivery_logs (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            company_id BIGINT UNSIGNED NOT NULL,
+            invoice_id BIGINT UNSIGNED NOT NULL,
+            action_type ENUM('PDF_GENERATED','EMAIL_SENT') NOT NULL,
+            recipient VARCHAR(255) NULL DEFAULT NULL,
+            details TEXT NULL,
+            created_by BIGINT UNSIGNED NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_invoice_delivery_company (company_id),
+            KEY idx_invoice_delivery_invoice (invoice_id)
+        )
+    `);
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS revoked_tokens (
@@ -743,6 +814,13 @@ const ensureSchema = async () => {
             'DRAFT','CREATED','BILTY_LINKED','READY_FOR_DISPATCH',
             'DISPATCHED','IN_TRANSIT','DELIVERED','FINAL_REPORT_SUBMITTED',
             'VERIFIED','COMPLETED','CLOSED','CANCELLED'
+        ) NOT NULL DEFAULT 'DRAFT'
+    `);
+
+    await db.query(`
+        ALTER TABLE invoices
+        MODIFY COLUMN status ENUM(
+            'DRAFT','APPROVED','SENT','PARTIAL','PAID','CANCELLED'
         ) NOT NULL DEFAULT 'DRAFT'
     `);
 

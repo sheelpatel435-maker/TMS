@@ -10,6 +10,9 @@ const empty = {
   deduction_amount: "",
   payment_method: "NEFT",
   reference_no: "",
+  bank_name: "",
+  bank_account: "",
+  remarks: "",
   deduction_type: "TDS",
   deduction_line_amount: "",
   deduction_remarks: ""
@@ -30,7 +33,9 @@ export default function Payments() {
     setRows(payments.payments || []);
     setInvoices(
       (invoiceData.invoices || []).filter(
-        (inv) => !["DRAFT", "CANCELLED", "PAID"].includes(inv.status)
+        (inv) =>
+          ["APPROVED", "SENT", "PARTIAL"].includes(inv.status) &&
+          Number(inv.balance_amount) > 0
       )
     );
   };
@@ -52,7 +57,10 @@ export default function Payments() {
           ? Number(form.deduction_amount)
           : 0,
         payment_method: form.payment_method,
-        reference_no: form.reference_no || undefined
+        reference_no: form.reference_no || undefined,
+        bank_name: form.bank_name || undefined,
+        bank_account: form.bank_account || undefined,
+        remarks: form.remarks || undefined
       });
 
       if (form.deduction_line_amount && created.payment_id) {
@@ -89,7 +97,9 @@ export default function Payments() {
         <div>
           <h1 style={{ margin: 0 }}>Payments</h1>
           <p className="muted">
-            Flow: PENDING → CONFIRMED (updates invoice balance to PARTIAL / PAID)
+            BRD §16: record against outstanding invoices. PENDING → CONFIRMED
+            updates balance to PARTIAL / PAID. TDS does not change invoice
+            gross.
           </p>
         </div>
       </div>
@@ -104,7 +114,7 @@ export default function Payments() {
               value={form.invoice_id}
               onChange={(e) => setForm({ ...form, invoice_id: e.target.value })}
             >
-              <option value="">Select SENT / PARTIAL invoice</option>
+              <option value="">Select outstanding invoice</option>
               {invoices.map((inv) => (
                 <option key={inv.id} value={inv.id}>
                   {inv.invoice_number} · bal {inv.balance_amount} · {inv.status}
@@ -135,7 +145,7 @@ export default function Payments() {
             />
           </label>
           <label className="field">
-            <span>Header deduction (optional)</span>
+            <span>Header deduction / TDS (optional)</span>
             <input
               type="number"
               min="0"
@@ -168,6 +178,29 @@ export default function Payments() {
               onChange={(e) =>
                 setForm({ ...form, reference_no: e.target.value })
               }
+            />
+          </label>
+          <label className="field">
+            <span>Bank name</span>
+            <input
+              value={form.bank_name}
+              onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Bank account</span>
+            <input
+              value={form.bank_account}
+              onChange={(e) =>
+                setForm({ ...form, bank_account: e.target.value })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>Remarks</span>
+            <input
+              value={form.remarks}
+              onChange={(e) => setForm({ ...form, remarks: e.target.value })}
             />
           </label>
           <label className="field">
@@ -217,6 +250,7 @@ export default function Payments() {
               <th>Gross</th>
               <th>Net</th>
               <th>Method</th>
+              <th>Bank</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -230,6 +264,7 @@ export default function Payments() {
                 <td>{p.gross_amount}</td>
                 <td>{p.net_received_amount}</td>
                 <td>{p.payment_method}</td>
+                <td>{p.bank_name || "—"}</td>
                 <td>
                   <span className="badge">{p.status}</span>
                 </td>

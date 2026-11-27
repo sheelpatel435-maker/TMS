@@ -138,7 +138,11 @@ const updateClient = async (req, res) => {
                     ? req.body.billing_email
                     : existing.billing_email,
             address:
-                req.body.address !== undefined ? req.body.address : existing.address,
+                req.body.address !== undefined
+                    ? req.body.address
+                    : req.body.billing_address !== undefined
+                      ? req.body.billing_address
+                      : existing.address,
             gst_number: gstNumber,
             state_code:
                 req.body.state_code !== undefined
@@ -148,6 +152,18 @@ const updateClient = async (req, res) => {
                 req.body.payment_terms !== undefined
                     ? req.body.payment_terms
                     : existing.payment_terms,
+            contact_person:
+                req.body.contact_person !== undefined
+                    ? req.body.contact_person
+                    : existing.contact_person,
+            invoice_email_recipients:
+                req.body.invoice_email_recipients !== undefined
+                    ? req.body.invoice_email_recipients
+                    : existing.invoice_email_recipients,
+            tax_preference:
+                req.body.tax_preference !== undefined
+                    ? req.body.tax_preference
+                    : existing.tax_preference,
             status: req.body.status !== undefined ? req.body.status : existing.status
         });
 

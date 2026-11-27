@@ -6,10 +6,13 @@ const empty = {
   mobile: "",
   email: "",
   billing_email: "",
+  contact_person: "",
+  invoice_email_recipients: "",
   address: "",
   gst_number: "",
   state_code: "",
-  payment_terms: ""
+  payment_terms: "",
+  tax_preference: "AUTO"
 };
 
 export default function Clients() {
@@ -33,7 +36,13 @@ export default function Clients() {
     setMsg("");
     setError("");
     try {
-      await endpoints.createClient(form);
+      await endpoints.createClient({
+        ...form,
+        invoice_email_recipients: form.invoice_email_recipients
+          .split(/[,;\n]+/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+      });
       setForm(empty);
       setMsg("Client created");
       load();
@@ -59,7 +68,8 @@ export default function Clients() {
         <div>
           <h1 style={{ margin: 0 }}>Clients</h1>
           <p className="muted">
-            Billing party master for invoices / bilty. Flow: Client → Invoice → Payment.
+            Billing party master (BRD §13): contact, GST, tax preference, invoice
+            recipients. Flow: Client → Invoice → Payment.
           </p>
         </div>
       </div>
@@ -69,9 +79,11 @@ export default function Clients() {
         <div className="grid-2">
           {[
             ["name", "Name", true],
+            ["contact_person", "Contact person", false],
             ["mobile", "Mobile", false],
             ["email", "Email", false],
             ["billing_email", "Billing email", false],
+            ["invoice_email_recipients", "Invoice email recipients (comma)", false],
             ["gst_number", "GST number", false],
             ["state_code", "State code", false],
             ["payment_terms", "Payment terms", false],
@@ -86,6 +98,19 @@ export default function Clients() {
               />
             </label>
           ))}
+          <label className="field">
+            <span>Tax preference</span>
+            <select
+              value={form.tax_preference}
+              onChange={(e) =>
+                setForm({ ...form, tax_preference: e.target.value })
+              }
+            >
+              <option value="AUTO">AUTO (CGST+SGST)</option>
+              <option value="CGST_SGST">CGST + SGST</option>
+              <option value="IGST">IGST</option>
+            </select>
+          </label>
         </div>
         <button className="btn btn-primary">Create client</button>
       </form>
@@ -95,8 +120,10 @@ export default function Clients() {
           <thead>
             <tr>
               <th>Name</th>
+              <th>Contact</th>
               <th>Mobile</th>
               <th>GST</th>
+              <th>Tax</th>
               <th>Terms</th>
               <th>Status</th>
               <th />
@@ -106,8 +133,10 @@ export default function Clients() {
             {rows.map((c) => (
               <tr key={c.id}>
                 <td>{c.name}</td>
+                <td>{c.contact_person || "—"}</td>
                 <td>{c.mobile || "—"}</td>
                 <td>{c.gst_number || "—"}</td>
+                <td>{c.tax_preference || "AUTO"}</td>
                 <td>{c.payment_terms || "—"}</td>
                 <td>{Number(c.status) === 1 ? "Active" : "Inactive"}</td>
                 <td>

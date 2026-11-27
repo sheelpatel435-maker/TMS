@@ -1,4 +1,5 @@
 const invoiceModel = require("../models/invoiceModel");
+const clientModel = require("../models/clientModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const { isMissing, isValidAmount, roundMoney, toNumber } = require("../utils/validation");
@@ -6,36 +7,25 @@ const { assertOwned, resolveCompanyId } = require("../utils/companyScope");
 const { assertTransition, isAllowedStatus } = require("../utils/statusTransitions");
 const { parseListFilters } = require("../utils/queryFilters");
 const { writeAudit } = require("../utils/audit");
+const { buildGstTaxes, sumTaxAmount } = require("../utils/invoiceTax");
 
-const buildTaxes = (taxes, subtotal, taxAmount) => {
-    if (Array.isArray(taxes) && taxes.length) {
-        return taxes.map((tax) => ({
-            tax_type: tax.tax_type || "GST",
-            tax_rate: isValidAmount(tax.tax_rate) ? roundMoney(tax.tax_rate) : 0,
-            taxable_amount: isValidAmount(tax.taxable_amount)
-                ? roundMoney(tax.taxable_amount)
-                : subtotal,
-            tax_amount: isValidAmount(tax.tax_amount)
-                ? roundMoney(tax.tax_amount)
-                : 0
-        }));
-    }
-
-    if (taxAmount <= 0) {
-        return [];
-    }
-
-    return [{
-        tax_type: "GST",
-        tax_rate: subtotal > 0 ? roundMoney((taxAmount / subtotal) * 100) : 0,
-        taxable_amount: subtotal,
-        tax_amount: taxAmount
-    }];
-};
-
-const buildLineItem = async (item, companyId) => {
+const buildLineItem = async (item, companyId, { excludeInvoiceId = null } = {}) => {
     await assertOwned("trips", item.trip_id, companyId, "Trip");
     await assertOwned("bilties", item.bilty_id, companyId, "Bilty");
+
+    if (item.trip_id) {
+        const billed = await invoiceModel.findOpenInvoiceForTrip(
+            companyId,
+            item.trip_id,
+            excludeInvoiceId
+        );
+        if (billed) {
+            throw new HttpError(
+                409,
+                `Trip #${item.trip_id} is already billed on invoice ${billed.invoice_number}`
+            );
+        }
+    }
 
     const freight = isValidAmount(item.freight ?? item.freight_amount)
         ? toNumber(item.freight ?? item.freight_amount)
@@ -53,12 +43,26 @@ const buildLineItem = async (item, companyId) => {
     return {
         trip_id: item.trip_id || null,
         bilty_id: item.bilty_id || null,
-        description: item.description || null,
+        description:
+            item.description || "Transportation of Goods by Road",
+        hsn_sac: item.hsn_sac || "996791",
         freight: roundMoney(freight),
         detention: roundMoney(detention),
         hamali: roundMoney(hamali),
         other_charges: roundMoney(otherCharges),
-        item_total: roundMoney(freight + detention + hamali + otherCharges)
+        item_total: roundMoney(freight + detention + hamali + otherCharges),
+        consignor_name: item.consignor_name || null,
+        consignor_invoice_no: item.consignor_invoice_no || null,
+        consignor_invoice_date: item.consignor_invoice_date || null,
+        from_location: item.from_location || item.source || null,
+        destination: item.destination || item.drop_location || null,
+        vehicle_type: item.vehicle_type || null,
+        vehicle_number: item.vehicle_number || item.truck_no || null,
+        gr_lr_number: item.gr_lr_number || item.bilty_number || null,
+        reporting_date: item.reporting_date || null,
+        delivery_date: item.delivery_date || null,
+        quantity: isValidAmount(item.quantity) ? toNumber(item.quantity) : null,
+        quantity_unit: item.quantity_unit || null
     };
 };
 
@@ -72,14 +76,20 @@ const createInvoice = async (req, res) => {
             due_date,
             tax_amount,
             deduction_amount,
-            items
+            items,
+            service_description,
+            hsn_sac,
+            payment_terms,
+            cgst_amount,
+            sgst_amount,
+            igst_amount
         } = req.body;
 
         if (isMissing(client_id) || isMissing(invoice_number) || isMissing(invoice_date)) {
             throw new HttpError(400, "client_id, invoice_number and invoice_date are required");
         }
 
-        await assertOwned("clients", client_id, companyId, "Client");
+        const client = await assertOwned("clients", client_id, companyId, "Client");
 
         const existing = await invoiceModel.findByNumber(
             companyId,
@@ -101,13 +111,25 @@ const createInvoice = async (req, res) => {
         const subtotal = roundMoney(
             lineItems.reduce((sum, item) => sum + Number(item.item_total), 0)
         );
-        const taxAmount = isValidAmount(tax_amount) ? roundMoney(tax_amount) : 0;
-        const deductionAmount = isValidAmount(deduction_amount)
-            ? roundMoney(deduction_amount)
-            : 0;
+        const taxes = buildGstTaxes({
+            taxes: req.body.taxes,
+            subtotal,
+            taxAmount: tax_amount,
+            taxPreference:
+                req.body.tax_preference || client.tax_preference || "AUTO",
+            cgstAmount: cgst_amount,
+            sgstAmount: sgst_amount,
+            igstAmount: igst_amount
+        });
+        const taxAmount = taxes.length
+            ? sumTaxAmount(taxes)
+            : isValidAmount(tax_amount)
+              ? roundMoney(tax_amount)
+              : 0;
+        // BRD: invoice gross stays unchanged when TDS is deducted later on payments
+        const deductionAmount = 0;
         const totalAmount = roundMoney(subtotal + taxAmount);
-        const balanceAmount = roundMoney(totalAmount - deductionAmount);
-        const taxes = buildTaxes(req.body.taxes, subtotal, taxAmount);
+        const balanceAmount = totalAmount;
 
         const invoiceId = await invoiceModel.createInvoice({
             company_id: companyId,
@@ -115,6 +137,10 @@ const createInvoice = async (req, res) => {
             invoice_number,
             invoice_date,
             due_date,
+            service_description:
+                service_description || "Transportation of Goods by Road",
+            hsn_sac: hsn_sac || "996791",
+            payment_terms: payment_terms || client.payment_terms || null,
             taxable_amount: subtotal,
             subtotal,
             tax_amount: taxAmount,
@@ -194,39 +220,68 @@ const updateInvoice = async (req, res) => {
             invoice_date,
             due_date,
             tax_amount,
-            deduction_amount,
-            items
+            items,
+            service_description,
+            hsn_sac,
+            payment_terms,
+            cgst_amount,
+            sgst_amount,
+            igst_amount
         } = req.body;
 
         if (isMissing(client_id) || isMissing(invoice_date)) {
             throw new HttpError(400, "client_id and invoice_date are required");
         }
 
-        await assertOwned("clients", client_id, companyId, "Client");
+        const client = await assertOwned("clients", client_id, companyId, "Client");
 
         const lineItems = [];
 
         if (Array.isArray(items)) {
             for (const item of items) {
-                lineItems.push(await buildLineItem(item, companyId));
+                lineItems.push(
+                    await buildLineItem(item, companyId, {
+                        excludeInvoiceId: req.params.id
+                    })
+                );
             }
         }
 
         const subtotal = roundMoney(
             lineItems.reduce((sum, item) => sum + Number(item.item_total), 0)
         );
-        const taxAmount = isValidAmount(tax_amount) ? roundMoney(tax_amount) : 0;
-        const deductionAmount = isValidAmount(deduction_amount)
-            ? roundMoney(deduction_amount)
-            : 0;
+        const taxes = buildGstTaxes({
+            taxes: req.body.taxes,
+            subtotal,
+            taxAmount: tax_amount,
+            taxPreference:
+                req.body.tax_preference || client.tax_preference || "AUTO",
+            cgstAmount: cgst_amount,
+            sgstAmount: sgst_amount,
+            igstAmount: igst_amount
+        });
+        const taxAmount = taxes.length
+            ? sumTaxAmount(taxes)
+            : isValidAmount(tax_amount)
+              ? roundMoney(tax_amount)
+              : 0;
+        const deductionAmount = 0;
         const totalAmount = roundMoney(subtotal + taxAmount);
-        const balanceAmount = roundMoney(totalAmount - deductionAmount);
-        const taxes = buildTaxes(req.body.taxes, subtotal, taxAmount);
+        const balanceAmount = totalAmount;
 
         const updated = await invoiceModel.updateInvoice(req.params.id, companyId, {
             client_id,
             invoice_date,
             due_date,
+            service_description:
+                service_description ||
+                invoice.service_description ||
+                "Transportation of Goods by Road",
+            hsn_sac: hsn_sac || invoice.hsn_sac || "996791",
+            payment_terms:
+                payment_terms !== undefined
+                    ? payment_terms
+                    : invoice.payment_terms || client.payment_terms || null,
             taxable_amount: subtotal,
             subtotal,
             tax_amount: taxAmount,
@@ -246,6 +301,174 @@ const updateInvoice = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Invoice updated successfully"
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const approveInvoice = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const invoice = await invoiceModel.getInvoiceById(req.params.id, companyId);
+
+        if (!invoice) {
+            throw new HttpError(404, "Invoice not found");
+        }
+
+        assertTransition("invoice", invoice.status, "APPROVED");
+        await invoiceModel.markApproved(req.params.id, companyId, req.user?.id);
+        await writeAudit(
+            req,
+            "INVOICE_APPROVED",
+            "invoice",
+            req.params.id,
+            `${invoice.status} -> APPROVED`
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Invoice approved successfully"
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const generatePdf = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const invoice = await invoiceModel.getInvoiceById(req.params.id, companyId);
+
+        if (!invoice) {
+            throw new HttpError(404, "Invoice not found");
+        }
+
+        if (invoice.status === "DRAFT") {
+            throw new HttpError(400, "Approve the invoice before generating PDF");
+        }
+
+        if (invoice.status === "CANCELLED") {
+            throw new HttpError(400, "Cannot generate PDF for cancelled invoice");
+        }
+
+        await invoiceModel.markPdfGenerated(req.params.id, companyId);
+        await invoiceModel.addDeliveryLog({
+            companyId,
+            invoiceId: req.params.id,
+            actionType: "PDF_GENERATED",
+            details: `PDF marked for invoice ${invoice.invoice_number}`,
+            createdBy: req.user?.id || null
+        });
+        await writeAudit(req, "INVOICE_PDF_GENERATED", "invoice", req.params.id);
+
+        return res.status(200).json({
+            success: true,
+            message: "Invoice PDF generated",
+            print_url: `/api/invoices/${req.params.id}/print`
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const emailInvoice = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const invoice = await invoiceModel.getInvoiceById(req.params.id, companyId);
+
+        if (!invoice) {
+            throw new HttpError(404, "Invoice not found");
+        }
+
+        if (["DRAFT", "CANCELLED"].includes(invoice.status)) {
+            throw new HttpError(
+                400,
+                "Invoice must be APPROVED (or already SENT) before emailing"
+            );
+        }
+
+        const client = await clientModel.getClientById(
+            invoice.client_id,
+            companyId
+        );
+
+        if (!client) {
+            throw new HttpError(400, "Client not found for this invoice");
+        }
+
+        const recipientsFromBody = Array.isArray(req.body.recipients)
+            ? req.body.recipients
+            : String(req.body.recipients || "")
+                  .split(/[,;\n]+/)
+                  .map((item) => item.trim())
+                  .filter(Boolean);
+
+        const recipients =
+            recipientsFromBody.length > 0
+                ? recipientsFromBody
+                : [
+                      ...(client.invoice_email_recipients || []),
+                      client.billing_email,
+                      client.email
+                  ].filter(Boolean);
+
+        const uniqueRecipients = [...new Set(recipients.map((r) => String(r).trim()))];
+
+        if (!uniqueRecipients.length) {
+            throw new HttpError(
+                400,
+                "No email recipients configured on client or request"
+            );
+        }
+
+        if (invoice.status === "APPROVED" || invoice.status === "DRAFT") {
+            assertTransition("invoice", invoice.status, "SENT");
+        }
+
+        await invoiceModel.markEmailSent(req.params.id, companyId);
+        await invoiceModel.addDeliveryLog({
+            companyId,
+            invoiceId: req.params.id,
+            actionType: "EMAIL_SENT",
+            recipient: uniqueRecipients.join(", "),
+            details:
+                req.body.note ||
+                `Invoice ${invoice.invoice_number} emailed (delivery logged)`,
+            createdBy: req.user?.id || null
+        });
+        await writeAudit(
+            req,
+            "INVOICE_EMAILED",
+            "invoice",
+            req.params.id,
+            uniqueRecipients.join(", ")
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Invoice email logged successfully",
+            recipients: uniqueRecipients
+        });
+    } catch (error) {
+        return sendError(res, error);
+    }
+};
+
+const getDeliveryLogs = async (req, res) => {
+    try {
+        const companyId = resolveCompanyId(req);
+        const invoice = await invoiceModel.getInvoiceById(req.params.id, companyId);
+
+        if (!invoice) {
+            throw new HttpError(404, "Invoice not found");
+        }
+
+        const logs = await invoiceModel.getDeliveryLogs(companyId, req.params.id);
+
+        return res.status(200).json({
+            success: true,
+            logs
         });
     } catch (error) {
         return sendError(res, error);
@@ -348,11 +571,27 @@ const printInvoice = async (req, res) => {
             throw new HttpError(404, "Invoice not found");
         }
 
+        const taxRows = (invoice.taxes || [])
+            .map(
+                (tax) =>
+                    `<tr>
+                        <td>${escapeHtml(tax.tax_type)}</td>
+                        <td>${escapeHtml(tax.tax_rate)}%</td>
+                        <td>${escapeHtml(tax.tax_amount)}</td>
+                    </tr>`
+            )
+            .join("");
+
         const itemRows = (invoice.items || [])
             .map(
                 (item) =>
                     `<tr>
                         <td>${escapeHtml(item.description || "-")}</td>
+                        <td>${escapeHtml(item.hsn_sac || invoice.hsn_sac || "-")}</td>
+                        <td>${escapeHtml(item.vehicle_number || "-")}</td>
+                        <td>${escapeHtml(item.gr_lr_number || "-")}</td>
+                        <td>${escapeHtml(item.from_location || "-")}</td>
+                        <td>${escapeHtml(item.destination || "-")}</td>
                         <td>${escapeHtml(item.freight)}</td>
                         <td>${escapeHtml(item.detention)}</td>
                         <td>${escapeHtml(item.hamali)}</td>
@@ -371,17 +610,23 @@ const printInvoice = async (req, res) => {
         body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
         h1 { margin-bottom: 4px; }
         table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 12px; }
         .totals { margin-top: 16px; }
     </style>
 </head>
 <body>
-    <h1>Invoice ${escapeHtml(invoice.invoice_number)}</h1>
-    <p>Date: ${escapeHtml(invoice.invoice_date || "-")} | Due: ${escapeHtml(invoice.due_date || "-")} | Status: ${escapeHtml(invoice.status)}</p>
+    <h1>Tax Invoice ${escapeHtml(invoice.invoice_number)}</h1>
+    <p>${escapeHtml(invoice.service_description || "Transportation of Goods by Road")} | HSN/SAC: ${escapeHtml(invoice.hsn_sac || "996791")}</p>
+    <p>Date: ${escapeHtml(invoice.invoice_date || "-")} | Due: ${escapeHtml(invoice.due_date || "-")} | Status: ${escapeHtml(invoice.status)} | Terms: ${escapeHtml(invoice.payment_terms || "-")}</p>
     <table>
         <thead>
             <tr>
                 <th>Description</th>
+                <th>HSN/SAC</th>
+                <th>Vehicle</th>
+                <th>GR/LR</th>
+                <th>From</th>
+                <th>To</th>
                 <th>Freight</th>
                 <th>Detention</th>
                 <th>Hamali</th>
@@ -391,8 +636,14 @@ const printInvoice = async (req, res) => {
         </thead>
         <tbody>${itemRows}</tbody>
     </table>
+    <table>
+        <thead>
+            <tr><th>Tax</th><th>Rate</th><th>Amount</th></tr>
+        </thead>
+        <tbody>${taxRows || "<tr><td colspan='3'>No tax lines</td></tr>"}</tbody>
+    </table>
     <div class="totals">
-        <p>Subtotal: ${escapeHtml(invoice.subtotal)}</p>
+        <p>Taxable / Subtotal: ${escapeHtml(invoice.subtotal)}</p>
         <p>Tax: ${escapeHtml(invoice.tax_amount)}</p>
         <p>Total: ${escapeHtml(invoice.total_amount)}</p>
         <p>Balance: ${escapeHtml(invoice.balance_amount)}</p>
@@ -415,5 +666,9 @@ module.exports = {
     updateInvoice,
     deactivateInvoice,
     updateStatus,
+    approveInvoice,
+    generatePdf,
+    emailInvoice,
+    getDeliveryLogs,
     printInvoice
 };

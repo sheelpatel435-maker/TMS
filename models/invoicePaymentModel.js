@@ -17,9 +17,12 @@ const createPayment = async (data) => {
             net_received_amount,
             payment_method,
             reference_no,
+            bank_name,
+            bank_account,
+            remarks,
             status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
         [
             data.company_id,
             data.invoice_id,
@@ -28,7 +31,10 @@ const createPayment = async (data) => {
             data.deduction_amount,
             data.net_received_amount,
             data.payment_method,
-            data.reference_no || null
+            data.reference_no || null,
+            data.bank_name || null,
+            data.bank_account || null,
+            data.remarks || null
         ]
     );
 

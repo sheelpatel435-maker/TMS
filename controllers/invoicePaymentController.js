@@ -24,7 +24,10 @@ const createPayment = async (req, res) => {
             gross_amount,
             deduction_amount,
             net_received_amount,
-            payment_method
+            payment_method,
+            bank_name,
+            bank_account,
+            remarks
         } = req.body;
 
         if (isMissing(invoice_id) || isMissing(payment_date) || isMissing(payment_method)) {
@@ -46,6 +49,11 @@ const createPayment = async (req, res) => {
             throw new HttpError(400, "Payments cannot be added to this invoice");
         }
 
+        const outstanding = roundMoney(invoice.balance_amount);
+        if (outstanding <= 0) {
+            throw new HttpError(400, "Invoice has no outstanding balance");
+        }
+
         const gross = firstPresent(gross_amount, gross_payment_amount, amount);
 
         if (!isValidAmount(gross) || toNumber(gross) <= 0) {
@@ -59,6 +67,14 @@ const createPayment = async (req, res) => {
             ? roundMoney(net_received_amount)
             : roundMoney(toNumber(gross) - deduction);
 
+        // BRD: TDS/deductions reduce what is received; invoice gross stays intact
+        if (net > outstanding) {
+            throw new HttpError(
+                400,
+                `Net received (${net}) exceeds outstanding balance (${outstanding})`
+            );
+        }
+
         const paymentId = await invoicePaymentModel.createPayment({
             company_id: companyId,
             invoice_id,
@@ -67,7 +83,10 @@ const createPayment = async (req, res) => {
             deduction_amount: deduction,
             net_received_amount: net < 0 ? 0 : net,
             payment_method,
-            reference_no: firstPresent(reference_no, payment_reference)
+            reference_no: firstPresent(reference_no, payment_reference),
+            bank_name: bank_name || null,
+            bank_account: bank_account || null,
+            remarks: remarks || null
         });
 
         return res.status(201).json({

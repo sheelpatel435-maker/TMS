@@ -854,7 +854,35 @@ spec.paths["/api/invoices/{id}"] = itemOps("Invoices", "invoice", {
 spec.paths["/api/invoices/{id}/print"] = {
     get: secured("Invoices", "Printable HTML invoice", { parameters: [idParam] })
 };
-spec.paths["/api/invoices/{id}/status"] = statusPatch("Invoices", "invoice", "SENT");
+spec.paths["/api/invoices/{id}/status"] = statusPatch("Invoices", "invoice", "APPROVED");
+spec.paths["/api/invoices/{id}/approve"] = {
+    post: secured("Invoices", "Approve draft invoice (DRAFT → APPROVED)", {
+        parameters: [idParam],
+        responses: ok
+    })
+};
+spec.paths["/api/invoices/{id}/pdf"] = {
+    post: secured("Invoices", "Mark PDF generated and log delivery", {
+        parameters: [idParam],
+        responses: ok
+    })
+};
+spec.paths["/api/invoices/{id}/email"] = {
+    post: secured(
+        "Invoices",
+        "Log invoice email to client recipients and move APPROVED → SENT",
+        {
+            parameters: [idParam],
+            requestBody: jsonBody({ recipients: ["billing@client.com"], note: "Invoice attached" }),
+            responses: ok
+        }
+    )
+};
+spec.paths["/api/invoices/{id}/delivery-logs"] = {
+    get: secured("Invoices", "PDF/email delivery logs for an invoice", {
+        parameters: [idParam]
+    })
+};
 
 spec.paths["/api/invoice-payments"] = crud(
     "Payments",
@@ -862,9 +890,13 @@ spec.paths["/api/invoice-payments"] = crud(
     {
         invoice_id: 1,
         payment_date: "2026-11-04",
-        payment_method: "UPI",
+        payment_method: "NEFT",
         gross_amount: 500,
-        reference_no: "UPI123"
+        deduction_amount: 50,
+        reference_no: "NEFT123",
+        bank_name: "HDFC",
+        bank_account: "XXXX1234",
+        remarks: "Against INV-1001"
     },
     ["invoice_id", "payment_date", "payment_method"]
 );

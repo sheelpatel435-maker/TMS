@@ -155,6 +155,13 @@ export const endpoints = {
   createInvoice: (body) => api("/api/invoices", { method: "POST", body }),
   updateInvoiceStatus: (id, status) =>
     api(`/api/invoices/${id}/status`, { method: "PATCH", body: { status } }),
+  approveInvoice: (id) =>
+    api(`/api/invoices/${id}/approve`, { method: "POST", body: {} }),
+  generateInvoicePdf: (id) =>
+    api(`/api/invoices/${id}/pdf`, { method: "POST", body: {} }),
+  emailInvoice: (id, body = {}) =>
+    api(`/api/invoices/${id}/email`, { method: "POST", body }),
+  invoiceDeliveryLogs: (id) => api(`/api/invoices/${id}/delivery-logs`),
   payments: () => api("/api/invoice-payments?limit=100"),
   createPayment: (body) =>
     api("/api/invoice-payments", { method: "POST", body }),
