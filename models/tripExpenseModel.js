@@ -43,6 +43,27 @@ const getExpenses = async (companyId, pagination) => {
     });
 };
 
+const getExpensesForSubmitter = async (
+    companyId,
+    submittedBy,
+    pagination,
+    { tripId = null } = {}
+) => {
+    const where = ["company_id = ?", "submitted_by = ?"];
+    const params = [companyId, submittedBy];
+    if (tripId) {
+        where.push("trip_id = ?");
+        params.push(tripId);
+    }
+    return paginatedSelect(db, {
+        table: "trip_expenses",
+        columns: "*",
+        where: where.join(" AND "),
+        params,
+        pagination
+    });
+};
+
 const getExpenseById = async (id, companyId) => {
     const [rows] = await db.execute(
         `SELECT *
@@ -93,6 +114,7 @@ const updateStatus = async (id, companyId, status, approvedAmount) => {
 module.exports = {
     createExpense,
     getExpenses,
+    getExpensesForSubmitter,
     getExpenseById,
     updateStatus
 };

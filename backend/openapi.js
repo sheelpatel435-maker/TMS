@@ -912,4 +912,56 @@ spec.paths["/api/invoice-payment-deductions/{id}"] = {
     get: secured("Payments", "Get a deduction", { parameters: [idParam] })
 };
 
+// BRD §17 — Driver/Helper mobile (user_type DRIVER|HELPER only)
+spec.paths["/api/mobile/me"] = {
+    get: secured("Mobile", "Driver/Helper profile + own documents + assigned vehicle")
+};
+spec.paths["/api/mobile/vehicle"] = {
+    get: secured("Mobile", "Currently assigned vehicle")
+};
+spec.paths["/api/mobile/vehicle/documents"] = {
+    get: secured("Mobile", "Documents for currently assigned vehicle", {
+        parameters: listParams
+    })
+};
+spec.paths["/api/mobile/trips"] = {
+    get: secured("Mobile", "Assigned trips. Query scope=current|history|all", {
+        parameters: [
+            ...listParams,
+            {
+                name: "scope",
+                in: "query",
+                schema: { type: "string", enum: ["current", "history", "all"] }
+            }
+        ]
+    })
+};
+spec.paths["/api/mobile/trips/{id}"] = {
+    get: secured(
+        "Mobile",
+        "Trip detail with bilty summaries, trip documents, settlements (driver)",
+        { parameters: [idParam] }
+    )
+};
+spec.paths["/api/mobile/trips/{id}/settlement"] = {
+    get: secured("Mobile", "Settlement status for an assigned trip (driver)", {
+        parameters: [idParam]
+    })
+};
+spec.paths["/api/mobile/expense-types"] = {
+    get: secured("Mobile", "Expense types for submit form (no desk ACL)")
+};
+spec.paths["/api/mobile/expenses"] = {
+    get: secured("Mobile", "My submitted expenses + approval status (driver)", {
+        parameters: [
+            ...listParams,
+            { name: "trip_id", in: "query", schema: { type: "integer" } }
+        ]
+    }),
+    post: secured(
+        "Mobile",
+        "Submit expense with receipt photo (multipart file required; driver only)"
+    )
+};
+
 module.exports = spec;

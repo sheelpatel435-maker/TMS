@@ -69,7 +69,11 @@ const createTrip = async (companyId, data) => {
     return result.insertId;
 };
 
-const getAssignedTrips = async (companyId, { driverId = null, helperId = null }, pagination) => {
+const getAssignedTrips = async (
+    companyId,
+    { driverId = null, helperId = null, scope = "all" } = {},
+    pagination
+) => {
     const where = ["company_id = ?"];
     const params = [companyId];
 
@@ -81,6 +85,13 @@ const getAssignedTrips = async (companyId, { driverId = null, helperId = null },
         params.push(helperId);
     } else {
         where.push("1 = 0");
+    }
+
+    const normalizedScope = String(scope || "all").toLowerCase();
+    if (normalizedScope === "current" || normalizedScope === "active") {
+        where.push("status NOT IN ('CLOSED', 'COMPLETED', 'CANCELLED')");
+    } else if (normalizedScope === "history") {
+        where.push("status IN ('CLOSED', 'COMPLETED', 'CANCELLED')");
     }
 
     return paginatedSelect(db, {

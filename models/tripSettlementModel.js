@@ -111,6 +111,19 @@ const getSettlementById = async (id, companyId) => {
     return rows[0];
 };
 
+const getSettlementsByTrip = async (companyId, tripId) => {
+    const [rows] = await db.execute(
+        `SELECT id, company_id, trip_id, total_advance, carry_forward_amount,
+                total_expenses, final_amount, balance_amount, status,
+                verified_by, verified_at, settled_at, remarks, created_at, updated_at
+         FROM trip_settlements
+         WHERE company_id = ? AND trip_id = ?
+         ORDER BY id DESC`,
+        [companyId, tripId]
+    );
+    return rows;
+};
+
 const mapIncomingStatus = (status) => {
     const aliases = {
         PENDING_APPROVAL: "PENDING",
@@ -165,6 +178,7 @@ module.exports = {
     createSettlement,
     getSettlements,
     getSettlementById,
+    getSettlementsByTrip,
     updateStatus,
     markVerified
 };
