@@ -2,6 +2,7 @@ const tripModel = require("../models/tripModel");
 const tripExpenseModel = require("../models/tripExpenseModel");
 const driverModel = require("../models/driverModel");
 const helperModel = require("../models/helperModel");
+const documentExpiryModel = require("../models/documentExpiryModel");
 const { parsePagination } = require("../utils/pagination");
 const { sendError, HttpError } = require("../utils/httpError");
 const {
@@ -9,6 +10,7 @@ const {
     requirePositiveAmount
 } = require("../utils/validation");
 const { writeAudit } = require("../utils/audit");
+const { buildStaffExpiryAlerts } = require("../utils/expiryAlerts");
 
 const resolveStaffProfile = async (user) => {
     if (!user?.company_id) {
@@ -61,6 +63,32 @@ const assertTripAssigned = (trip, staff) => {
 
     if (staff.role === "HELPER" && Number(trip.helper_id) !== Number(staff.profile.id)) {
         throw new HttpError(403, "Trip is not assigned to this helper");
+    }
+};
+
+const getMyDocumentAlerts = async (req, res) => {
+    try {
+        const staff = await resolveStaffProfile(req.user);
+        const daysRaw = req.query.days === undefined ? 30 : Number(req.query.days);
+        if (!Number.isInteger(daysRaw) || daysRaw < 0 || daysRaw > 365) {
+            throw new HttpError(400, "days must be an integer between 0 and 365");
+        }
+
+        const docs = await documentExpiryModel.getStaffExpiringDocuments(
+            req.user.company_id,
+            {
+                source: staff.role === "DRIVER" ? "driver" : "helper",
+                ownerId: staff.profile.id
+            },
+            daysRaw
+        );
+
+        return res.status(200).json({
+            success: true,
+            ...buildStaffExpiryAlerts(docs, daysRaw)
+        });
+    } catch (error) {
+        return sendError(res, error);
     }
 };
 
@@ -156,6 +184,7 @@ const submitMyExpense = async (req, res) => {
 };
 
 module.exports = {
+    getMyDocumentAlerts,
     getMyTrips,
     getMyTripById,
     submitMyExpense

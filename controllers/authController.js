@@ -19,6 +19,10 @@ const {
 const { assertStrongPassword, BCRYPT_ROUNDS } = require("../utils/password");
 const { writeAudit } = require("../utils/audit");
 const { sendSms } = require("../utils/sms");
+const driverModel = require("../models/driverModel");
+const helperModel = require("../models/helperModel");
+const documentExpiryModel = require("../models/documentExpiryModel");
+const { buildStaffExpiryAlerts } = require("../utils/expiryAlerts");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1h";
 const REFRESH_TOKEN_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 7);
@@ -131,11 +135,53 @@ const publicUser = (user) => ({
     last_login_at: user.last_login_at || null
 });
 
+const STAFF_EXPIRY_DAYS = 30;
+
+const resolveStaffOwner = async (user) => {
+    if (!user?.company_id || !OTP_USER_TYPES.includes(user.user_type)) {
+        return null;
+    }
+
+    if (user.user_type === "DRIVER") {
+        const byUser = await driverModel.findDriverByUserId(user.id, user.company_id);
+        const driver =
+            byUser ||
+            (await driverModel.findDriverByMobile(user.company_id, user.mobile));
+        if (!driver) return null;
+        return { source: "driver", ownerId: driver.id };
+    }
+
+    const byUser = await helperModel.findHelperByUserId(user.id, user.company_id);
+    const helper =
+        byUser ||
+        (await helperModel.findHelperByMobile(user.company_id, user.mobile));
+    if (!helper) return null;
+    return { source: "helper", ownerId: helper.id };
+};
+
+const buildStaffDocumentAlerts = async (user, days = STAFF_EXPIRY_DAYS) => {
+    try {
+        const owner = await resolveStaffOwner(user);
+        if (!owner) {
+            return buildStaffExpiryAlerts([], days);
+        }
+
+        const docs = await documentExpiryModel.getStaffExpiringDocuments(
+            user.company_id,
+            owner,
+            days
+        );
+        return buildStaffExpiryAlerts(docs, days);
+    } catch (error) {
+        console.error("LOGIN_DOCUMENT_ALERTS_ERROR:", error.message);
+        return buildStaffExpiryAlerts([], days);
+    }
+};
+
 const buildLoginResponse = async (user, message) => {
     const { token } = signAccessToken(user);
     const refresh = await issueRefreshToken(user);
-
-    return {
+    const response = {
         success: true,
         message,
         token,
@@ -143,6 +189,12 @@ const buildLoginResponse = async (user, message) => {
         expires_in: ACCESS_TOKEN_EXPIRES_IN,
         user: publicUser(user)
     };
+
+    if (OTP_USER_TYPES.includes(user.user_type)) {
+        response.document_alerts = await buildStaffDocumentAlerts(user);
+    }
+
+    return response;
 };
 
 const auditFor = (req, user, action, description) =>

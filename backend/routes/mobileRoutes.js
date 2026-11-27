@@ -8,6 +8,7 @@ const controller = require("../../controllers/mobileController");
 router.use(authMiddleware);
 router.use(requireMobileVehicleUser);
 
+router.get("/document-alerts", controller.getMyDocumentAlerts);
 router.get("/trips", controller.getMyTrips);
 router.get("/trips/:id", controller.getMyTripById);
 router.post("/expenses", controller.submitMyExpense);

@@ -44,6 +44,41 @@ const getExpiringDocuments = async (companyId, days = 30, pagination = { page: 1
     };
 };
 
+const getStaffExpiringDocuments = async (
+    companyId,
+    { source, ownerId },
+    days = 30
+) => {
+    const horizon = days === undefined || days === null ? 30 : Number(days);
+    const table =
+        source === "helper"
+            ? "helper_documents"
+            : source === "driver"
+              ? "driver_documents"
+              : null;
+    const ownerColumn = source === "helper" ? "helper_id" : "driver_id";
+
+    if (!table || !ownerId) {
+        return [];
+    }
+
+    const [rows] = await db.execute(
+        `SELECT '${source}' AS source, id, company_id, ${ownerColumn} AS owner_id,
+                document_type, document_number, document_url, expiry_date
+         FROM ${table}
+         WHERE company_id = ?
+           AND ${ownerColumn} = ?
+           AND status = 1
+           AND expiry_date IS NOT NULL
+           AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+         ORDER BY expiry_date ASC, id ASC`,
+        [companyId, ownerId, horizon]
+    );
+
+    return rows;
+};
+
 module.exports = {
-    getExpiringDocuments
+    getExpiringDocuments,
+    getStaffExpiringDocuments
 };
