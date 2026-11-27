@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { endpoints } from "../api";
+import ExpiryAlerts from "../components/ExpiryAlerts";
 
 const emptyForm = {
   name: "",
@@ -209,6 +210,8 @@ export default function Helpers() {
           </p>
         </div>
       </div>
+
+      <ExpiryAlerts source="helper" />
 
       <form className="card stack" onSubmit={onSubmit}>
         <h3>Add helper</h3>

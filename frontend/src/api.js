@@ -196,7 +196,8 @@ export const endpoints = {
     api("/api/vehicle-assignments", { method: "POST", body }),
   closeAssignment: (id) =>
     api(`/api/vehicle-assignments/${id}/close`, { method: "PATCH", body: {} }),
-  expiringDocuments: () => api("/api/documents/expiring?limit=50"),
+  expiringDocuments: (days = 30) =>
+    api(`/api/documents/expiring?days=${days}&limit=50`),
   fileUrl: (path) =>
     path?.startsWith("http") ? path : `${API_BASE}${path || ""}`,
   bilties: () => api("/api/bilties?limit=100"),

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { endpoints } from "../api";
+import ExpiryAlerts from "../components/ExpiryAlerts";
 
 const DOC_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX"];
 
@@ -39,7 +40,6 @@ export default function Vehicles() {
   const [drivers, setDrivers] = useState([]);
   const [helpers, setHelpers] = useState([]);
   const [assignments, setAssignments] = useState([]);
-  const [expiring, setExpiring] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [docs, setDocs] = useState([]);
   const [history, setHistory] = useState([]);
@@ -59,13 +59,12 @@ export default function Vehicles() {
   );
 
   const loadCore = async () => {
-    const [v, t, d, h, a, e, dt] = await Promise.all([
+    const [v, t, d, h, a, dt] = await Promise.all([
       endpoints.vehicles(),
       endpoints.vehicleTypes().catch(() => ({ vehicleTypes: [] })),
       endpoints.drivers().catch(() => ({ drivers: [] })),
       endpoints.helpers().catch(() => ({ helpers: [] })),
       endpoints.assignments().catch(() => ({ assignments: [] })),
-      endpoints.expiringDocuments().catch(() => ({ documents: [] })),
       endpoints.vehicleDocumentTypes().catch(() => ({ documentTypes: [] }))
     ]);
     setVehicles(v.vehicles || []);
@@ -73,7 +72,6 @@ export default function Vehicles() {
     setDrivers(d.drivers || []);
     setHelpers(h.helpers || []);
     setAssignments(a.assignments || []);
-    setExpiring(e.documents || e.rows || []);
     setCustomTypes(dt.documentTypes || []);
   };
 
@@ -239,33 +237,7 @@ export default function Vehicles() {
         </div>
       </div>
 
-      {expiring.length ? (
-        <div className="card">
-          <h3>Expiry alerts</h3>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Number</th>
-                <th>Expiry</th>
-                <th>Entity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expiring.slice(0, 15).map((d, idx) => (
-                <tr key={d.id || idx}>
-                  <td>{d.document_type}</td>
-                  <td>{d.document_number || "—"}</td>
-                  <td>{String(d.expiry_date || "").slice(0, 10)}</td>
-                  <td>
-                    {d.source || "vehicle"} #{d.owner_id || "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <ExpiryAlerts source="vehicle" />
 
       <form className="card stack" onSubmit={createType}>
         <h3>Vehicle type</h3>

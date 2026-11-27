@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { endpoints } from "../api";
+import ExpiryAlerts from "../components/ExpiryAlerts";
 
 const emptyForm = {
   name: "",
@@ -209,6 +210,8 @@ export default function Drivers() {
           </p>
         </div>
       </div>
+
+      <ExpiryAlerts source="driver" />
 
       <form className="card stack" onSubmit={onSubmit}>
         <h3>Add driver</h3>

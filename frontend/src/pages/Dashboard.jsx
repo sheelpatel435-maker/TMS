@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { endpoints } from "../api";
 import { useAuth } from "../auth";
+import ExpiryAlerts from "../components/ExpiryAlerts";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ export default function Dashboard() {
         </div>
       </div>
       {error ? <p className="error">{error}</p> : null}
+      <ExpiryAlerts limit={20} />
       <div className="grid-3">
         {["vehicles", "drivers", "helpers", "trips", "bilties", "clients", "invoices"].map(
           (key) => (
