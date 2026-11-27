@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider, useAuth } from "./auth";
+import { AuthProvider, useAuth, isFieldType } from "./auth";
 import Layout from "./components/Layout";
+import MobileLayout from "./components/MobileLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Companies from "./pages/Companies";
@@ -13,12 +14,25 @@ import Trips from "./pages/Trips";
 import Clients from "./pages/Clients";
 import Invoices from "./pages/Invoices";
 import Payments from "./pages/Payments";
+import FieldHome from "./pages/mobile/FieldHome";
+import FieldTrips from "./pages/mobile/FieldTrips";
+import FieldTripDetail from "./pages/mobile/FieldTripDetail";
+import FieldVehicle from "./pages/mobile/FieldVehicle";
+import FieldExpenses from "./pages/mobile/FieldExpenses";
 
 function RequireAuth({ children, adminOnly = false, superOnly = false }) {
-  const { authed, isAdmin, isSuperAdmin } = useAuth();
+  const { authed, isAdmin, isSuperAdmin, isFieldUser } = useAuth();
   if (!authed) return <Navigate to="/login" replace />;
+  if (isFieldUser) return <Navigate to="/field" replace />;
   if (superOnly && !isSuperAdmin) return <Navigate to="/" replace />;
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
+function RequireField({ children }) {
+  const { authed, isFieldUser } = useAuth();
+  if (!authed) return <Navigate to="/login" replace />;
+  if (!isFieldUser) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -31,14 +45,15 @@ function RequireCompanyContext({ children }) {
   return children;
 }
 
-function homePath(authed, needsCompanyContext) {
+function homePath(authed, user, needsCompanyContext) {
   if (!authed) return "/login";
+  if (isFieldType(user?.user_type)) return "/field";
   if (needsCompanyContext) return "/companies";
   return "/";
 }
 
 function AppRoutes() {
-  const { authed, needsCompanyContext } = useAuth();
+  const { authed, user, needsCompanyContext } = useAuth();
 
   return (
     <Routes>
@@ -46,12 +61,31 @@ function AppRoutes() {
         path="/login"
         element={
           authed ? (
-            <Navigate to={homePath(true, needsCompanyContext)} replace />
+            <Navigate
+              to={homePath(true, user, needsCompanyContext)}
+              replace
+            />
           ) : (
             <Login />
           )
         }
       />
+
+      <Route
+        path="/field"
+        element={
+          <RequireField>
+            <MobileLayout />
+          </RequireField>
+        }
+      >
+        <Route index element={<FieldHome />} />
+        <Route path="trips" element={<FieldTrips />} />
+        <Route path="trips/:id" element={<FieldTripDetail />} />
+        <Route path="vehicle" element={<FieldVehicle />} />
+        <Route path="expenses" element={<FieldExpenses />} />
+      </Route>
+
       <Route
         path="/"
         element={
@@ -153,7 +187,9 @@ function AppRoutes() {
       </Route>
       <Route
         path="*"
-        element={<Navigate to={homePath(authed, needsCompanyContext)} replace />}
+        element={
+          <Navigate to={homePath(authed, user, needsCompanyContext)} replace />
+        }
       />
     </Routes>
   );

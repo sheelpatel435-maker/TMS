@@ -85,9 +85,36 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
 
 export const endpoints = {
   login: (body) => api("/api/login", { method: "POST", body, auth: false }),
+  requestLoginOtp: (body) =>
+    api("/api/auth/otp/request", { method: "POST", body, auth: false }),
+  verifyLoginOtp: (body) =>
+    api("/api/auth/otp/verify", { method: "POST", body, auth: false }),
+  forgotPassword: (body) =>
+    api("/api/auth/password/forgot", { method: "POST", body, auth: false }),
+  resetPassword: (body) =>
+    api("/api/auth/password/reset", { method: "POST", body, auth: false }),
+  changePassword: (body) =>
+    api("/api/auth/password/change", { method: "POST", body }),
   profile: () => api("/api/profile"),
   selectCompany: (body) =>
     api("/api/auth/select-company", { method: "POST", body }),
+  // BRD §17 mobile
+  mobileMe: () => api("/api/mobile/me"),
+  mobileVehicle: () => api("/api/mobile/vehicle"),
+  mobileVehicleDocuments: () => api("/api/mobile/vehicle/documents?limit=50"),
+  mobileTrips: (scope = "all") =>
+    api(`/api/mobile/trips?limit=100&scope=${encodeURIComponent(scope)}`),
+  mobileTrip: (id) => api(`/api/mobile/trips/${id}`),
+  mobileTripSettlement: (id) => api(`/api/mobile/trips/${id}/settlement`),
+  mobileExpenseTypes: () => api("/api/mobile/expense-types"),
+  mobileExpenses: (tripId) =>
+    api(
+      tripId
+        ? `/api/mobile/expenses?limit=100&trip_id=${tripId}`
+        : "/api/mobile/expenses?limit=100"
+    ),
+  mobileSubmitExpense: (formData) =>
+    api("/api/mobile/expenses", { method: "POST", formData }),
   dashboard: () => api("/api/dashboard"),
   companies: () => api("/api/companies"),
   createCompany: (body) => api("/api/companies", { method: "POST", body }),

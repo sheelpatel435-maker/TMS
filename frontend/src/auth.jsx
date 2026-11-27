@@ -10,6 +10,9 @@ import {
 
 const AuthContext = createContext(null);
 
+const isFieldType = (userType) =>
+  userType === "DRIVER" || userType === "HELPER";
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
@@ -18,10 +21,27 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       authed,
-      async login(email, password) {
-        const data = await endpoints.login({ email, password });
+      async login(identifier, password) {
+        const trimmed = String(identifier || "").trim();
+        const body = trimmed.includes("@")
+          ? { email: trimmed.toLowerCase(), password }
+          : { mobile: trimmed, identifier: trimmed, password };
+        const data = await endpoints.login(body);
         if (!data?.token || !data?.user) {
-          throw new Error("Invalid email or password");
+          throw new Error("Invalid credentials");
+        }
+        saveSession(data);
+        setUser(data.user);
+        setAuthed(true);
+        return data.user;
+      },
+      async loginWithOtp(mobile, otp) {
+        const data = await endpoints.verifyLoginOtp({
+          mobile: String(mobile || "").trim(),
+          otp: String(otp || "").trim()
+        });
+        if (!data?.token || !data?.user) {
+          throw new Error("Invalid or expired OTP");
         }
         saveSession(data);
         setUser(data.user);
@@ -50,6 +70,7 @@ export function AuthProvider({ children }) {
       isAdmin:
         user?.user_type === "SUPER_ADMIN" ||
         user?.user_type === "COMPANY_ADMIN",
+      isFieldUser: isFieldType(user?.user_type),
       // Super Admin must pick a company before tenant APIs work
       needsCompanyContext:
         user?.user_type === "SUPER_ADMIN" && !user?.company_id
@@ -63,3 +84,5 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
+
+export { isFieldType };
